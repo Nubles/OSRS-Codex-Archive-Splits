@@ -35,6 +35,8 @@ public class RunTracker
 	/** The split closed most recently, which a boss coming back can reopen. */
 	private Split lastClosed;
 	private int lastClosedAt = Integer.MIN_VALUE;
+	/** Whether the split closed most recently was a guess at an unnamed boss. */
+	private boolean lastClosedGuessed;
 	/** The newest tick seen, relative to the run's start. */
 	private int now;
 	/** Whether the open split was opened by a guess at an unnamed boss, which a named boss of the row may correct. */
@@ -58,6 +60,7 @@ public class RunTracker
 		open = null;
 		lastClosed = null;
 		lastClosedAt = Integer.MIN_VALUE;
+		lastClosedGuessed = false;
 		guessed = false;
 		pendingTick = -1;
 		finalTick = -1;
@@ -185,15 +188,18 @@ public class RunTracker
 			// A later boss is up, so the open one fell without the client seeing it.
 			close(pendingTick >= 0 ? pendingTick : t);
 		}
+		else if (lastClosed != null && lastClosedGuessed && !encounter.isUnnamed()
+			&& encounter.getRow() == lastClosed.getEncounter().getRow() && lastClosed.getEncounter().getRow() == nextRow() - 1)
+		{
+			// What was taken for the unnamed boss fell, but it was an add: the row's named boss is only now being fought.
+			lastClosed.retarget(encounter, t);
+			reopenLast(false);
+			return;
+		}
 		else if (lastClosed != null && lastClosed.getEncounter() == encounter && canReopen())
 		{
 			// The boss is back: what fell was a form, not the boss.
-			lastClosed.reopen();
-			open = lastClosed;
-			lastEnd = open.getStartTick();
-			lastClosed = null;
-			finalTick = -1;
-			pendingTick = -1;
+			reopenLast(lastClosedGuessed);
 			return;
 		}
 		if (encounter.getRow() < nextRow())
@@ -203,6 +209,18 @@ public class RunTracker
 		open = new Split(encounter, lastEnd, t);
 		guessed = encounter.isUnnamed();
 		run.splitsMutable().add(open);
+	}
+
+	private void reopenLast(boolean wasGuessed)
+	{
+		lastClosed.reopen();
+		open = lastClosed;
+		lastEnd = open.getStartTick();
+		lastClosed = null;
+		lastClosedGuessed = false;
+		guessed = wasGuessed;
+		finalTick = -1;
+		pendingTick = -1;
 	}
 
 	/**
@@ -258,6 +276,7 @@ public class RunTracker
 		}
 		lastClosed = open;
 		lastClosedAt = now;
+		lastClosedGuessed = guessed;
 		open = null;
 		guessed = false;
 		pendingTick = -1;
