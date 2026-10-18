@@ -19,7 +19,7 @@ public class RecordsTest
 		{
 			t.engage(route[i], prev + 5);
 			t.fell(route[i], falls[i], false);
-			for (int k = falls[i]; k <= falls[i] + RunTracker.CONFIRM_TICKS; k++)
+			for (int k = falls[i]; k <= falls[i] + RunTracker.FINAL_CONFIRM_TICKS; k++)
 			{
 				t.tick(k);
 			}

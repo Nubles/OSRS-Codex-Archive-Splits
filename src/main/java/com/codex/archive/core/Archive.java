@@ -50,6 +50,17 @@ public class Archive
 
 	public void record(Run run)
 	{
+		record(run, null, 0);
+	}
+
+	/**
+	 * Adds a finished run to the history.
+	 *
+	 * @param purples the uniques that landed during the run, logged once the run has counted towards the dry streak
+	 * @param now when the run was recorded, for the purple log
+	 */
+	public void record(Run run, List<String> purples, long now)
+	{
 		if (run == null)
 		{
 			return;
@@ -69,6 +80,17 @@ public class Archive
 			else if (run.getKc() == 0 && kc > 0)
 			{
 				kc++;
+			}
+		}
+		if (purples != null)
+		{
+			for (String unique : purples)
+			{
+				if (unique != null)
+				{
+					drops.add(new Drop(unique, now, kc, dry));
+					dry = 0;
+				}
 			}
 		}
 	}
@@ -96,6 +118,66 @@ public class Archive
 		dry = 0;
 	}
 
+	/**
+	 * Takes a run out of the history, for one the plugin timed wrongly. A completion since the last
+	 * purple also comes off the dry streak.
+	 *
+	 * @return whether a run started at that moment was found
+	 */
+	public boolean removeRun(long startedAt)
+	{
+		for (int i = runs.size() - 1; i >= 0; i--)
+		{
+			Run r = runs.get(i);
+			if (r.getStartedAt() == startedAt)
+			{
+				runs.remove(i);
+				long lastDrop = drops.isEmpty() ? Long.MIN_VALUE : drops.get(drops.size() - 1).getAt();
+				if (r.isCompleted() && r.getStartedAt() > lastDrop && dry > 0)
+				{
+					dry--;
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Takes a purple out of the log, for one the plugin mistook. The clears it took go back onto
+	 * the streak it ended: the next purple's, or the current dry streak when it was the newest.
+	 *
+	 * @return whether the purple was found
+	 */
+	public boolean removeDrop(long at, String unique)
+	{
+		for (int i = drops.size() - 1; i >= 0; i--)
+		{
+			Drop d = drops.get(i);
+			if (d.getAt() == at && d.getUnique().equals(unique))
+			{
+				drops.remove(i);
+				if (i < drops.size())
+				{
+					drops.get(i).addDry(d.getDry());
+				}
+				else
+				{
+					dry += d.getDry();
+				}
+				for (Run r : runs)
+				{
+					if (unique.equals(r.getPurple()) && Math.abs(r.getStartedAt() - at) < LOOT_WINDOW_MS * 6)
+					{
+						r.setPurple(null);
+					}
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public Archive repair()
 	{
 		if (runs == null)
@@ -109,6 +191,8 @@ public class Archive
 			drops = new ArrayList<>();
 		}
 		drops.removeIf(d -> d == null || d.getUnique() == null);
+		kc = Math.max(0, kc);
+		dry = Math.max(0, dry);
 		return this;
 	}
 }

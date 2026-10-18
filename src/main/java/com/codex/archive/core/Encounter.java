@@ -106,6 +106,10 @@ public enum Encounter
 			return null;
 		}
 		String name = clean(npcName);
+		if (name.startsWith("the "))
+		{
+			name = name.substring(4);
+		}
 		for (Encounter e : values())
 		{
 			for (String n : e.names)
@@ -122,6 +126,6 @@ public enum Encounter
 	/** Strips the colour tags the game puts in some names, and lowercases what is left. */
 	static String clean(String name)
 	{
-		return name.replaceAll("<[^>]*>", "").replace(' ', ' ').trim().toLowerCase(Locale.ENGLISH);
+		return name.replaceAll("<[^>]*>", "").replace('\u00A0', ' ').trim().toLowerCase(Locale.ENGLISH);
 	}
 }

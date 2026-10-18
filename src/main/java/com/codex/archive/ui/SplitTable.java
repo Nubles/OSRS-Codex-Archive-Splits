@@ -71,19 +71,9 @@ public class SplitTable extends JComponent
 		g.setColor(live ? Theme.alpha(Theme.TEAL, 110) : Theme.STROKE_SOFT);
 		g.draw(shape);
 
-		int current = -1;
-		if (live && run != null)
-		{
-			for (int row = 0; row < Encounter.ROWS; row++)
-			{
-				Split s = run.split(row);
-				if (s == null || !s.isDone())
-				{
-					current = row;
-					break;
-				}
-			}
-		}
+		int reached = reachedRow();
+		// The row being fought is the one after the furthest boss down, even if a row before it went untimed.
+		int current = live && run != null && reached < Encounter.ROWS ? reached : -1;
 
 		// The thread joining the nodes, gilt as far as the run has come.
 		int top = PAD + ROW / 2;
@@ -91,7 +81,6 @@ public class SplitTable extends JComponent
 		g.setStroke(new BasicStroke(2f));
 		g.setColor(Theme.STROKE);
 		g.drawLine(NODE_X, top, NODE_X, bottom);
-		int reached = reachedRow();
 		if (reached > 0)
 		{
 			int end = PAD + ROW * Math.min(reached, Encounter.ROWS - 1) + ROW / 2;
@@ -102,7 +91,7 @@ public class SplitTable extends JComponent
 
 		for (int row = 0; row < Encounter.ROWS; row++)
 		{
-			paintRow(g, row, PAD + row * ROW, w, row == current);
+			paintRow(g, row, PAD + row * ROW, w, row == current, row < reached);
 		}
 		g.dispose();
 	}
@@ -110,27 +99,16 @@ public class SplitTable extends JComponent
 	/** The rows the run has finished, the next one being the one it is on. */
 	private int reachedRow()
 	{
-		if (run == null)
-		{
-			return 0;
-		}
-		int n = 0;
-		for (int row = 0; row < Encounter.ROWS; row++)
-		{
-			Split s = run.split(row);
-			if (s != null && s.isDone())
-			{
-				n = row + 1;
-			}
-		}
-		return n;
+		return run == null ? 0 : run.reached();
 	}
 
-	private void paintRow(Graphics2D g, int row, int y, int w, boolean current)
+	private void paintRow(Graphics2D g, int row, int y, int w, boolean current, boolean passed)
 	{
 		Split split = run == null ? null : run.split(row);
 		boolean done = split != null && split.isDone();
 		boolean failed = !live && split != null && !done;
+		// Behind the furthest boss down but with no time: the client never saw this boss fall.
+		boolean untimed = passed && !done;
 		int mid = y + ROW / 2;
 
 		if (current)
@@ -208,6 +186,10 @@ public class SplitTable extends JComponent
 			sub = split == null ? "walking in" : "fight " + Format.ticks(split.fightTicks(elapsed));
 			subColor = Theme.alpha(Theme.TEAL, 200);
 		}
+		else if (untimed)
+		{
+			sub = "not timed";
+		}
 		else if (failed)
 		{
 			sub = "the run ended here";
@@ -220,8 +202,11 @@ public class SplitTable extends JComponent
 		g.setColor(subColor);
 		g.drawString(Ui.clip(sub, small, nameRoom), tx, mid + small.getAscent() + 3);
 
-		// The right column: the run's time at this boss, and the delta under it.
+		// The right column: the run's time at this boss, and the delta under it. The row being
+		// fought shows the best's time here as the mark to beat; the crest already runs the clock.
 		int rx = w - 10;
+		Split bestSplit = best == null ? null : best.split(row);
+		int bestEnd = bestSplit != null && bestSplit.isDone() ? bestSplit.getEndTick() : -1;
 		String time = null;
 		Color timeColor = Theme.TEXT;
 		if (done)
@@ -230,12 +215,12 @@ public class SplitTable extends JComponent
 		}
 		else if (current)
 		{
-			time = Format.ticks(elapsed);
-			timeColor = Theme.mix(Theme.TEAL, Theme.TEXT, 0.4);
+			time = Format.ticks(bestEnd >= 0 ? bestEnd : elapsed);
+			timeColor = bestEnd >= 0 ? Theme.alpha(Theme.TEAL, 190) : Theme.mix(Theme.TEAL, Theme.TEXT, 0.4);
 		}
-		else if (best != null && best.split(row) != null && best.split(row).isDone())
+		else if (!untimed && !failed && bestEnd >= 0)
 		{
-			time = Format.ticks(best.split(row).getEndTick());
+			time = Format.ticks(bestEnd);
 			timeColor = Theme.TEXT_FAINT;
 		}
 		if (time != null)
@@ -246,21 +231,20 @@ public class SplitTable extends JComponent
 		}
 
 		Integer delta = done ? Records.delta(run, best, row) : null;
-		if (current && best != null && best.split(row) != null && best.split(row).isDone())
+		if (current && bestEnd >= 0 && elapsed > bestEnd)
 		{
-			int d = elapsed - best.split(row).getEndTick();
 			// While fighting, only show a delta once the run is already behind: being ahead is not known until the boss falls.
-			delta = d > 0 ? d : null;
+			delta = elapsed - bestEnd;
 		}
 		if (delta != null)
 		{
 			paintPill(g, Format.delta(delta), Theme.delta(delta), rx, mid + 3);
 		}
-		else if (!done && !current && time != null)
+		else if (!done && time != null && bestEnd >= 0)
 		{
 			g.setFont(Theme.small());
-			String label = "best";
-			g.setColor(Theme.TEXT_FAINT);
+			String label = current ? "to beat" : "best";
+			g.setColor(current ? Theme.alpha(Theme.TEAL, 170) : Theme.TEXT_FAINT);
 			g.drawString(label, rx - small.stringWidth(label), mid + small.getAscent() + 3);
 		}
 	}

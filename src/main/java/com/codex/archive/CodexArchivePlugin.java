@@ -2,6 +2,9 @@ package com.codex.archive;
 
 import com.codex.archive.core.Archive;
 import com.codex.archive.core.Encounter;
+import com.codex.archive.core.LootWatch;
+import com.codex.archive.core.Messages;
+import com.codex.archive.core.Presence;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
 import com.codex.archive.core.RunTracker;
@@ -19,9 +22,8 @@ import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Actor;
@@ -69,16 +71,14 @@ public class CodexArchivePlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexArchivePlugin.class);
 	private static final String ARCHIVE_KEY = "archive";
-	/** How long after the lobby was last seen an instance still counts as the archive, about a minute. */
-	private static final int LOBBY_TICKS = 100;
-	/** How long after a run uniques landing in the pack are still its loot, five minutes. */
+	/** How long after a clear uniques landing in the pack are still its loot, five minutes, or until the bank opens. */
 	private static final int LOOT_TICKS = 500;
+	/** How long the plaque keeps showing a clear while the player is still inside, half a minute. */
+	private static final int CLEARED_TICKS = 50;
 	private static final int SAVE_TICKS = 50;
 
 	/** The lobby's own NPCs: seeing one means the next instance is the archive. */
 	private static final String[] LOBBY_NPCS = {"record keeper", "general montoya"};
-	private static final Pattern KC = Pattern.compile("your (?:completed )?(.*archive.*?) (?:completion |kill )?count is:? ?([\\d,]+)", Pattern.CASE_INSENSITIVE);
-	private static final Pattern WIPE = Pattern.compile("(your party|your team|everyone) ha(?:s|ve) (?:fallen|been defeated|perished)", Pattern.CASE_INSENSITIVE);
 
 	@Inject
 	private Client client;
@@ -108,9 +108,10 @@ public class CodexArchivePlugin extends Plugin
 	private CodexArchiveConfig config;
 
 	private final RunTracker tracker = new RunTracker();
+	private final Presence presence = new Presence();
+	private final LootWatch loot = new LootWatch();
 	private final SplitsPlaque splitsPlaque = new SplitsPlaque();
 	private final PackPlaque packPlaque = new PackPlaque();
-	private final Map<Integer, Integer> inventory = new HashMap<>();
 	private Map<Supply, Integer> pack = new EnumMap<>(Supply.class);
 
 	private ArchivePanel panel;
@@ -124,13 +125,12 @@ public class CodexArchivePlugin extends Plugin
 	private boolean changed;
 	private boolean dirty;
 	private int tick;
-	private boolean inInstance;
-	private int instanceSince = -1;
-	private int lobbySeen = -LOBBY_TICKS * 2;
-	private int lobbyNpcs;
-	private int runEnded = -LOOT_TICKS * 2;
+	private int runEnded = Integer.MIN_VALUE / 2;
+	/** The run just recorded when it was a clear, for the plaque while the player is still inside. */
+	private Run lastClear;
 	private boolean wipeAnnounced;
-	private int lastRow;
+	/** The furthest row whose split has gone to the chat box this run. */
+	private int announcedRow;
 
 	@Provides
 	CodexArchiveConfig provideConfig(ConfigManager configManager)
@@ -152,13 +152,20 @@ public class CodexArchivePlugin extends Plugin
 		applyConfig();
 		overlayManager.add(splitsPlaque);
 		overlayManager.add(packPlaque);
+		panel.onDelete(this::deleteRun, this::deleteDrop);
 		clientThread.invokeLater(() ->
 		{
 			loadProfile();
-			ItemContainer inv = client.getItemContainer(InventoryID.INV);
-			if (inv != null)
+			readPack();
+			WorldView view = client.getTopLevelWorldView();
+			if (view != null)
 			{
-				readInventory(inv, false);
+				int lobby = 0;
+				for (NPC npc : view.npcs())
+				{
+					lobby += isLobbyNpc(npc) ? 1 : 0;
+				}
+				presence.lobbyNpcsInView(lobby, tick);
 			}
 			publish();
 		});
@@ -172,10 +179,17 @@ public class CodexArchivePlugin extends Plugin
 		clientToolbar.removeNavigation(navButton);
 		clientThread.invokeLater(() ->
 		{
+			if (tracker.isActive())
+			{
+				// The plugin is going off mid-run; what was timed so far is kept rather than lost.
+				endRun();
+			}
+			loot.close();
+			presence.reset();
 			save();
 			archive = null;
+			shown = null;
 			profile = null;
-			inventory.clear();
 		});
 		panel = null;
 	}
@@ -199,14 +213,20 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING)
+		GameState state = event.getGameState();
+		if (state == GameState.LOADING)
+		{
+			presence.sceneLoaded(tick);
+		}
+		else if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
 		{
 			if (tracker.isActive())
 			{
 				endRun();
 			}
-			inInstance = false;
-			lobbyNpcs = 0;
+			presence.reset();
+			loot.close();
+			lastClear = null;
 			save();
 			dirty = true;
 		}
@@ -225,8 +245,7 @@ public class CodexArchivePlugin extends Plugin
 	{
 		if (isLobbyNpc(event.getNpc()))
 		{
-			lobbyNpcs++;
-			lobbySeen = tick;
+			presence.lobbyNpc(true, tick);
 			dirty = true;
 		}
 	}
@@ -234,11 +253,16 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onNpcDespawned(NpcDespawned event)
 	{
-		if (isLobbyNpc(event.getNpc()))
+		NPC npc = event.getNpc();
+		if (isLobbyNpc(npc))
 		{
-			lobbyNpcs = Math.max(0, lobbyNpcs - 1);
-			lobbySeen = tick;
+			presence.lobbyNpc(false, tick);
 			dirty = true;
+		}
+		else if (tracker.isActive() && (npc.isDead() || npc.getHealthRatio() == 0))
+		{
+			// Some bosses leave without the client reporting a death; a body leaving at no health is a fall.
+			bossFell(npc);
 		}
 	}
 
@@ -246,22 +270,26 @@ public class CodexArchivePlugin extends Plugin
 	public void onHitsplatApplied(HitsplatApplied event)
 	{
 		Actor actor = event.getActor();
-		if (!(actor instanceof NPC) || !inInstance)
+		if (!(actor instanceof NPC) || !presence.isInInstance())
 		{
 			return;
 		}
 		NPC npc = (NPC) actor;
-		Encounter encounter = Encounter.byName(npc.getName());
-		if (!tracker.isActive() && encounter == Encounter.GUARDIAN)
+		if (npc.isDead())
+		{
+			// A hit landing on a body is not a fight going on.
+			return;
+		}
+		if (!tracker.isActive() && Encounter.byName(npc.getName()) == Encounter.GUARDIAN)
 		{
 			// The lobby was missed, but the Guardian is unmistakable: the run began on entering.
-			beginRun(instanceSince >= 0 ? instanceSince : tick);
+			beginRun(presence.likelyStart(tick));
 		}
 		if (!tracker.isActive())
 		{
 			return;
 		}
-		encounter = tracker.resolve(npc.getName(), npc.getCombatLevel());
+		Encounter encounter = tracker.resolve(npc.getName(), npc.getCombatLevel());
 		if (encounter != null)
 		{
 			tracker.engage(encounter, tick);
@@ -283,11 +311,15 @@ public class CodexArchivePlugin extends Plugin
 			dirty = true;
 			return;
 		}
-		if (!(actor instanceof NPC))
+		if (actor instanceof NPC)
 		{
-			return;
+			bossFell((NPC) actor);
 		}
-		NPC npc = (NPC) actor;
+	}
+
+	/** A boss NPC went down; the split closes once nothing else of its encounter stands. */
+	private void bossFell(NPC npc)
+	{
 		Encounter encounter = tracker.resolve(npc.getName(), npc.getCombatLevel());
 		if (encounter == null)
 		{
@@ -299,7 +331,8 @@ public class CodexArchivePlugin extends Plugin
 		{
 			for (NPC other : view.npcs())
 			{
-				if (other != npc && !other.isDead() && tracker.resolve(other.getName(), other.getCombatLevel()) == encounter)
+				if (other != npc && !other.isDead() && other.getHealthRatio() != 0
+					&& tracker.resolve(other.getName(), other.getCombatLevel()) == encounter)
 				{
 					anyAlive = true;
 					break;
@@ -307,6 +340,7 @@ public class CodexArchivePlugin extends Plugin
 			}
 		}
 		tracker.fell(encounter, tick, anyAlive);
+		dirty = true;
 	}
 
 	@Subscribe
@@ -316,14 +350,16 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
-		String text = event.getMessage().replaceAll("<[^>]*>", "");
-		Matcher kc = KC.matcher(text);
-		if (kc.find())
+		String text = event.getMessage();
+		int count = Messages.completionCount(text);
+		if (count >= 0)
 		{
-			int count = Integer.parseInt(kc.group(2).replace(",", ""));
 			if (tracker.isActive())
 			{
+				// The game's own word that the archive is cleared: the run is complete, whatever was seen of the last boss.
 				tracker.kc(count);
+				tracker.complete(tick);
+				endRun();
 			}
 			if (archive != null)
 			{
@@ -333,7 +369,7 @@ public class CodexArchivePlugin extends Plugin
 			}
 			dirty = true;
 		}
-		if (tracker.isActive() && WIPE.matcher(text).find())
+		if (tracker.isActive() && Messages.isWipe(text))
 		{
 			wipeAnnounced = true;
 		}
@@ -342,9 +378,19 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
-		if (event.getContainerId() == InventoryID.INV)
+		int id = event.getContainerId();
+		if (id == InventoryID.INV)
 		{
-			readInventory(event.getItemContainer(), true);
+			readPack();
+		}
+		if (id == InventoryID.INV || id == InventoryID.WORN)
+		{
+			watchLoot();
+		}
+		else if (id == InventoryID.BANK && !tracker.isActive())
+		{
+			// Anything from here on could have come out of the bank.
+			loot.close();
 		}
 	}
 
@@ -353,34 +399,35 @@ public class CodexArchivePlugin extends Plugin
 	{
 		tick++;
 		WorldView view = client.getTopLevelWorldView();
-		boolean nowInstance = view != null && view.isInstance();
-		if (nowInstance && !inInstance)
-		{
-			instanceSince = tick;
-			if (tick - lobbySeen <= LOBBY_TICKS && !tracker.isActive())
-			{
-				beginRun(tick);
-			}
-		}
-		else if (!nowInstance && inInstance && tracker.isActive())
+		boolean instance = view != null && view.isInstance();
+		Presence.Action action = presence.tick(tick, instance, tracker.isActive(), tracker.elapsed(tick));
+		if (action == Presence.Action.END)
 		{
 			endRun();
 		}
-		inInstance = nowInstance;
+		else if (action == Presence.Action.BEGIN)
+		{
+			beginRun(presence.beginTick());
+		}
 
 		if (tracker.isActive())
 		{
 			if (tracker.nextRow() == 0 && view != null)
 			{
-				tracker.seeTeam(view.players().stream().mapToInt(p -> 1).sum());
+				tracker.seeTeam(count(view));
 			}
 			tracker.tick(tick);
 			int row = tracker.nextRow();
-			if (row != lastRow)
+			if (row > announcedRow)
 			{
 				announceSplit(row - 1);
-				lastRow = row;
+				announcedRow = row;
 			}
+			dirty = true;
+		}
+		if (lastClear != null && (tick - runEnded > CLEARED_TICKS || !instance))
+		{
+			lastClear = null;
 			dirty = true;
 		}
 		if (unsaved && tick % SAVE_TICKS == 0)
@@ -391,6 +438,16 @@ public class CodexArchivePlugin extends Plugin
 		{
 			publish();
 		}
+	}
+
+	private static int count(WorldView view)
+	{
+		int n = 0;
+		for (Player ignored : view.players())
+		{
+			n++;
+		}
+		return n;
 	}
 
 	private static boolean isLobbyNpc(NPC npc)
@@ -414,37 +471,61 @@ public class CodexArchivePlugin extends Plugin
 	private void beginRun(int at)
 	{
 		WorldView view = client.getTopLevelWorldView();
-		int team = view == null ? 1 : view.players().stream().mapToInt(p -> 1).sum();
-		tracker.begin(System.currentTimeMillis(), at, team, pack);
-		lastRow = 0;
+		tracker.begin(System.currentTimeMillis(), at, view == null ? 1 : count(view), pack);
+		loot.open(heldUniques());
+		announcedRow = 0;
 		wipeAnnounced = false;
+		lastClear = null;
 		dirty = true;
 	}
 
 	private void endRun()
 	{
+		List<String> purples = tracker.purples();
 		Run run = tracker.finish(tick, wipeAnnounced);
 		runEnded = tick;
 		wipeAnnounced = false;
-		if (run != null && archive != null && (run.isCompleted() || !run.getSplits().isEmpty()))
+		if (run == null)
 		{
-			archive.record(run);
+			return;
+		}
+		if (run.isCompleted())
+		{
+			loot.closeAt(tick + LOOT_TICKS);
+		}
+		else
+		{
+			loot.close();
+		}
+		long now = System.currentTimeMillis();
+		if (archive != null)
+		{
+			if (run.isCompleted() || !run.getSplits().isEmpty())
+			{
+				archive.record(run, purples, now);
+				if (run.isCompleted())
+				{
+					lastClear = run;
+					announceRun(run);
+				}
+			}
+			else
+			{
+				// Too little of a run to keep, but a purple is a purple.
+				purples.forEach(u -> archive.purple(u, now));
+			}
 			unsaved = true;
 			changed = true;
-			if (run.isCompleted())
-			{
-				announceRun(run);
-			}
 		}
 		save();
 		dirty = true;
 	}
 
-	/** Counts supplies, and spots a unique arriving during or just after a run. */
-	private void readInventory(ItemContainer container, boolean watchForLoot)
+	/** Counts the supplies in the pack. */
+	private void readPack()
 	{
-		Map<Integer, Integer> now = new HashMap<>();
 		Map<Supply, Integer> units = new EnumMap<>(Supply.class);
+		ItemContainer container = client.getItemContainer(InventoryID.INV);
 		if (container != null)
 		{
 			for (Item item : container.getItems())
@@ -453,7 +534,6 @@ public class CodexArchivePlugin extends Plugin
 				{
 					continue;
 				}
-				now.merge(item.getId(), item.getQuantity(), Integer::sum);
 				String name = itemManager.getItemComposition(item.getId()).getName();
 				Supply supply = Supply.of(name);
 				if (supply != null)
@@ -462,29 +542,87 @@ public class CodexArchivePlugin extends Plugin
 				}
 			}
 		}
-		boolean lootWindow = tracker.isActive() || tick - runEnded <= LOOT_TICKS;
-		if (watchForLoot && lootWindow && archive != null)
-		{
-			for (Map.Entry<Integer, Integer> e : now.entrySet())
-			{
-				if (e.getValue() > inventory.getOrDefault(e.getKey(), 0))
-				{
-					String unique = Spoils.unique(itemManager.getItemComposition(e.getKey()).getName());
-					if (unique != null)
-					{
-						tracker.purple(unique);
-						archive.purple(unique, System.currentTimeMillis());
-						unsaved = true;
-						changed = true;
-					}
-				}
-			}
-		}
-		inventory.clear();
-		inventory.putAll(now);
 		pack = units;
 		tracker.pack(units);
 		dirty = true;
+	}
+
+	/** The uniques held now, in the pack and worn, by the panel's name for them. */
+	private Map<String, Integer> heldUniques()
+	{
+		Map<String, Integer> held = new HashMap<>();
+		for (int id : new int[]{InventoryID.INV, InventoryID.WORN})
+		{
+			ItemContainer container = client.getItemContainer(id);
+			if (container == null)
+			{
+				continue;
+			}
+			for (Item item : container.getItems())
+			{
+				if (item.getId() < 0 || item.getQuantity() <= 0)
+				{
+					continue;
+				}
+				String unique = Spoils.unique(itemManager.getItemComposition(item.getId()).getName());
+				if (unique != null)
+				{
+					held.merge(unique, item.getQuantity(), Integer::sum);
+				}
+			}
+		}
+		return held;
+	}
+
+	/** A unique arriving during a run, or just after a clear, is a purple. */
+	private void watchLoot()
+	{
+		if (archive == null || !loot.isOpen(tick))
+		{
+			return;
+		}
+		for (String unique : loot.arrivals(heldUniques(), tick))
+		{
+			if (tracker.isActive())
+			{
+				tracker.purple(unique);
+			}
+			else
+			{
+				archive.purple(unique, System.currentTimeMillis());
+				unsaved = true;
+				changed = true;
+			}
+			dirty = true;
+		}
+	}
+
+	private void deleteRun(long startedAt)
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (archive != null && archive.removeRun(startedAt))
+			{
+				unsaved = true;
+				changed = true;
+				save();
+				publish();
+			}
+		});
+	}
+
+	private void deleteDrop(long at, String unique)
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (archive != null && archive.removeDrop(at, unique))
+			{
+				unsaved = true;
+				changed = true;
+				save();
+				publish();
+			}
+		});
 	}
 
 	private void announceSplit(int row)
@@ -498,13 +636,13 @@ public class CodexArchivePlugin extends Plugin
 		Run best = Records.best(archive.getRuns(), Records.bucket(live.getTeamSize()));
 		Integer delta = Records.delta(live, best, row);
 		ChatMessageBuilder line = new ChatMessageBuilder()
-			.append(ChatColorType.HIGHLIGHT).append(split.getEncounter().getShortName() + ": ")
-			.append(ChatColorType.NORMAL).append("room " + Format.ticks(split.roomTicks(0)) + ", fight " + Format.ticks(split.fightTicks(0))
-				+ ", total " + Format.ticks(split.getEndTick()));
+			.append(ChatColorType.HIGHLIGHT).append(split.getEncounter().getShortName())
+			.append(ChatColorType.NORMAL).append(" down at " + Format.ticks(split.getEndTick()));
 		if (delta != null)
 		{
-			line.append(" (" + Format.delta(delta) + " on your best)");
+			line.append(", ").append(ChatColorType.HIGHLIGHT).append(Format.versus(delta)).append(ChatColorType.NORMAL);
 		}
+		line.append(". Room " + Format.ticks(split.roomTicks(0)) + ", fight " + Format.ticks(split.fightTicks(0)) + ".");
 		chat(line);
 	}
 
@@ -514,13 +652,29 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
-		Run best = Records.best(archive.getRuns(), Records.bucket(run.getTeamSize()));
+		Run best = null;
+		int bucket = Records.bucket(run.getTeamSize());
+		for (Run r : archive.getRuns())
+		{
+			if (r != run && r.isCompleted() && Records.bucket(r.getTeamSize()) == bucket && (best == null || r.getTicks() < best.getTicks()))
+			{
+				best = r;
+			}
+		}
 		ChatMessageBuilder line = new ChatMessageBuilder()
 			.append(ChatColorType.HIGHLIGHT).append("Archive cleared in " + Format.ticks(run.getTicks()))
-			.append(ChatColorType.NORMAL).append(" with a party of " + run.getTeamSize() + ".");
-		if (best == run)
+			.append(ChatColorType.NORMAL).append(" (" + Records.BUCKETS[bucket].toLowerCase() + ")");
+		if (best == null)
 		{
-			line.append(ChatColorType.HIGHLIGHT).append(" A new personal best.");
+			line.append(", your first " + Records.BUCKETS[bucket].toLowerCase() + " clear.");
+		}
+		else if (run.getTicks() < best.getTicks())
+		{
+			line.append(ChatColorType.HIGHLIGHT).append(", a new personal best by " + Format.span(best.getTicks() - run.getTicks()) + ".");
+		}
+		else
+		{
+			line.append(", " + Format.versus(run.getTicks() - best.getTicks()) + ".");
 		}
 		chat(line);
 	}
@@ -601,9 +755,9 @@ public class CodexArchivePlugin extends Plugin
 		changed = false;
 		Archive copy = shown;
 		Run live = tracker.view(tick);
-		boolean inLobby = loggedIn && lobbyNpcs > 0 && !tracker.isActive();
+		boolean inLobby = loggedIn && presence.isInLobby() && !tracker.isActive();
 		View view = new View(loggedIn && player != null ? player.getName() : null, loggedIn, copy, live, inLobby,
-			pack, targets(), System.currentTimeMillis());
+			pack, targets(), System.currentTimeMillis(), live == null ? lastClear : null);
 		splitsPlaque.show(view);
 		packPlaque.show(view);
 		ArchivePanel target = panel;

@@ -18,7 +18,12 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.LongConsumer;
 import javax.swing.JComponent;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPopupMenu;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
@@ -51,6 +56,10 @@ public class ArchivePanel extends PluginPanel
 
 	private View view = View.loggedOut();
 	private boolean partyChosen;
+	private LongConsumer onDeleteRun = t -> { };
+	private BiConsumer<Long, String> onDeleteDrop = (t, u) -> { };
+	/** What the run page was last built from; while it holds, a tick only repaints the thread. */
+	private String runKey;
 	/** What the records page was built from, so it is only rebuilt when the history changes. */
 	private Archive recordsFor;
 	private int recordsBucket = -1;
@@ -99,6 +108,13 @@ public class ArchivePanel extends PluginPanel
 		return scroll;
 	}
 
+	/** What the panel asks of the plugin when the player strikes a run or a purple off. */
+	public void onDelete(LongConsumer run, BiConsumer<Long, String> drop)
+	{
+		onDeleteRun = run;
+		onDeleteDrop = drop;
+	}
+
 	/** Called on the Swing thread with each new moment of the plugin's state. */
 	public void update(View view)
 	{
@@ -110,9 +126,10 @@ public class ArchivePanel extends PluginPanel
 		}
 		updateCrest();
 		rebuildRun();
+		// Also catches the party size moving to the live run's, which changes what the page holds.
+		rebuildRecords(false);
 		if (historyChanged)
 		{
-			rebuildRecords(false);
 			rebuildSpoils();
 		}
 	}
@@ -150,7 +167,7 @@ public class ArchivePanel extends PluginPanel
 		String heading = view.player != null ? view.player + "  -  ARCHIVE" : "FRACTURED ARCHIVE";
 		if (view.archive == null)
 		{
-			crest.update(heading, "-", null, false, "Log in to open the archive", null, null, null);
+			crest.update(heading, "", null, false, "Log in to open the archive", null, null, null);
 			return;
 		}
 		Archive a = view.archive;
@@ -158,8 +175,8 @@ public class ArchivePanel extends PluginPanel
 		if (live != null)
 		{
 			int bucket = Records.bucket(live.getTeamSize());
-			Run best = Records.best(a.getRuns(), bucket);
-			int row = currentRow(live);
+			Run best = view.liveBest;
+			int row = live.reached();
 			Split split = row < Encounter.ROWS ? live.split(row) : null;
 			Integer delta = row > 0 ? Records.delta(live, best, row - 1) : null;
 			String room = split == null ? (row >= Encounter.ROWS ? "Cleared" : "Walking") : split.getEncounter().getShortName();
@@ -171,7 +188,7 @@ public class ArchivePanel extends PluginPanel
 		}
 		int bucket = party.getSelected();
 		Run best = Records.best(a.getRuns(), bucket);
-		String status = a.getRuns().isEmpty() ? (view.inLobby ? "In the lobby. Check your pack" : "Enter the archive to begin") : null;
+		String status = a.getRuns().isEmpty() ? (view.inLobby ? "In the lobby" : "Enter the archive to begin") : null;
 		crest.update(heading, best == null ? "-" : Format.ticks(best.getTicks()),
 			best == null ? null : Records.BUCKETS[bucket].toLowerCase(), false, status,
 			new String[]{"KC", "Dry", "Purples"},
@@ -180,21 +197,16 @@ public class ArchivePanel extends PluginPanel
 			new Color[]{Theme.TEXT, a.getDry() >= 30 ? Theme.EMBER : Theme.TEXT, a.getDrops().isEmpty() ? Theme.TEXT_FAINT : Theme.PURPLE});
 	}
 
-	private static int currentRow(Run run)
-	{
-		for (int row = 0; row < Encounter.ROWS; row++)
-		{
-			Split s = run.split(row);
-			if (s == null || !s.isDone())
-			{
-				return row;
-			}
-		}
-		return Encounter.ROWS;
-	}
-
 	private void rebuildRun()
 	{
+		String key = runKey();
+		if (key.equals(runKey) && view.live != null)
+		{
+			// Mid-run the page keeps its shape; only the thread, the clocks and the bars move.
+			refreshLive();
+			return;
+		}
+		runKey = key;
 		StackPanel stack = new StackPanel(Theme.GUTTER, Theme.GUTTER);
 		if (view.archive == null)
 		{
@@ -202,19 +214,20 @@ public class ArchivePanel extends PluginPanel
 			setPage(runPage, stack);
 			return;
 		}
-		if (view.inLobby)
+		if (view.inLobby && view.checksPack())
 		{
 			stack.add(new SectionHeader("Before you enter", "no bank inside"));
 			packCard.update(view.pack, view.targets);
 			stack.add(packCard);
 		}
+		else if (view.inLobby)
+		{
+			stack.add(note("In the lobby", "Set how much food and how many doses you want to carry in, under Pack check in the plugin's settings, and this page checks your pack before the doors close."));
+		}
 		Run run = view.live != null ? view.live : view.archive.last();
 		if (run == null)
 		{
-			if (!view.inLobby)
-			{
-				stack.add(note("No runs yet", "Enter the archive and your first run is timed from the moment the doors close. Each boss gets a split as it falls; the Guardian and the hooded figure always, and whichever door you take in the three rows between."));
-			}
+			stack.add(note("No runs yet", "Enter the archive and your first run is timed from the moment the doors close. Each boss gets a split as it falls; the Guardian and the hooded figure always, and whichever door you take in the three rows between."));
 			setPage(runPage, stack);
 			return;
 		}
@@ -241,6 +254,45 @@ public class ArchivePanel extends PluginPanel
 		{
 			stack.add(summary(run, best));
 		}
+		Map<Supply, Integer> used = used(run);
+		if (!used.isEmpty())
+		{
+			usedCard.update(used, null);
+			stack.add(usedCard);
+		}
+		setPage(runPage, stack);
+	}
+
+	/** Everything that decides the run page's shape, so it is only rebuilt when that changes. */
+	private String runKey()
+	{
+		Run run = view.live != null ? view.live : view.archive == null ? null : view.archive.last();
+		return System.identityHashCode(view.archive) + "|" + (view.live != null) + "|" + view.inLobby + "|" + view.checksPack()
+			+ "|" + (run == null ? "" : run.getStartedAt() + ":" + run.getTeamSize() + ":" + used(run).isEmpty())
+			+ "|" + (view.live == null ? view.now / 60_000 : 0);
+	}
+
+	/** One tick of a live run on an unchanged page. */
+	private void refreshLive()
+	{
+		Run run = view.live;
+		int bucket = Records.bucket(run.getTeamSize());
+		Run best = view.liveBest;
+		int[] bestRooms = new int[Encounter.ROWS];
+		for (int row = 0; row < Encounter.ROWS; row++)
+		{
+			bestRooms[row] = Records.bestRoom(runs(), bucket, row);
+		}
+		table.update(run, best, bestRooms, run.getTicks(), true);
+		Map<Supply, Integer> used = used(run);
+		if (!used.isEmpty())
+		{
+			usedCard.update(used, null);
+		}
+	}
+
+	private static Map<Supply, Integer> used(Run run)
+	{
 		Map<Supply, Integer> used = new EnumMap<>(Supply.class);
 		for (Map.Entry<String, Integer> e : run.getUsed().entrySet())
 		{
@@ -253,12 +305,7 @@ public class ArchivePanel extends PluginPanel
 				// A kind of supply a later version no longer counts.
 			}
 		}
-		if (!used.isEmpty())
-		{
-			usedCard.update(used, null);
-			stack.add(usedCard);
-		}
-		setPage(runPage, stack);
+		return used;
 	}
 
 	private static Run bestExcept(List<Run> runs, int bucket, Run except)
@@ -296,7 +343,7 @@ public class ArchivePanel extends PluginPanel
 		}
 		else
 		{
-			grid.add(new StatTile(run.getKc() > 0 ? Format.count(run.getKc()) : "-", "KC", "completions", Theme.TEXT));
+			grid.add(new StatTile(run.getKc() > 0 ? Format.count(run.getKc()) : "-", "KC", "in all", Theme.TEXT));
 		}
 		grid.add(new StatTile(String.valueOf(run.getDeaths()), "Deaths", Records.BUCKETS[Records.bucket(run.getTeamSize())].toLowerCase(),
 			run.getDeaths() == 0 ? Theme.GREEN : Theme.EMBER));
@@ -326,12 +373,14 @@ public class ArchivePanel extends PluginPanel
 		int avg = Records.recentAverage(runs, bucket, 10);
 		int done = 0;
 		int wiped = 0;
+		int left = 0;
 		for (Run r : runs)
 		{
 			if (Records.bucket(r.getTeamSize()) == bucket)
 			{
 				done += r.isCompleted() ? 1 : 0;
 				wiped += r.getOutcome() == Outcome.WIPED ? 1 : 0;
+				left += r.getOutcome() == Outcome.LEFT ? 1 : 0;
 			}
 		}
 		JPanel grid = new JPanel(new GridLayout(2, 2, 6, 6));
@@ -360,20 +409,38 @@ public class ArchivePanel extends PluginPanel
 		}
 		stack.add(fights);
 
-		stack.add(new SectionHeader("Recent runs", runs.isEmpty() ? null : Format.count(runs.size()) + " in all"));
+		int inBucket = done + wiped + left;
+		String party = Records.BUCKETS[bucket].toLowerCase();
+		stack.add(new SectionHeader("Recent " + party + " runs", inBucket == 0 ? null : Format.count(inBucket) + " in all"));
 		Card history = new Card(new GridLayout(0, 1, 0, 0));
 		history.setBorder(new EmptyBorder(2, 4, 2, 4));
 		int shown = 0;
 		for (int i = runs.size() - 1; i >= 0 && shown < HISTORY; i--)
 		{
-			history.add(new RunRow(runs.get(i), runs.get(i) == Records.best(runs, Records.bucket(runs.get(i).getTeamSize())), view.now));
+			Run r = runs.get(i);
+			if (Records.bucket(r.getTeamSize()) != bucket)
+			{
+				continue;
+			}
+			RunRow row = new RunRow(r, r == Records.best(runs, Records.bucket(r.getTeamSize())), view.now);
+			row.setComponentPopupMenu(menu("Delete this run",
+				"Delete the " + describe(r) + " from " + Format.day(r.getStartedAt()) + " at " + Format.time(r.getStartedAt())
+					+ "? Its times leave your records for good.",
+				() -> onDeleteRun.accept(r.getStartedAt())));
+			history.add(row);
 			shown++;
 		}
 		if (shown == 0)
 		{
-			history.add(Ui.wrapped("Your runs appear here as you finish them.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 20));
+			history.setBorder(new EmptyBorder(8, 10, 8, 10));
+			history.add(Ui.wrapped(runs.isEmpty() ? "Your runs appear here as you finish them."
+				: "No " + party + " runs yet. Pick another party size above.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 24));
 		}
 		stack.add(history);
+		if (shown > 0)
+		{
+			stack.add(Ui.wrapped("Right-click a run the plugin timed wrongly to delete it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
 		setPage(recordsPage, stack);
 	}
 
@@ -391,8 +458,11 @@ public class ArchivePanel extends PluginPanel
 		grid.setOpaque(false);
 		int clears = Records.count(a.getRuns(), Outcome.COMPLETED);
 		grid.add(new StatTile(String.valueOf(a.getDry()), "Dry", a.getDry() == 1 ? "clear" : "clears", a.getDry() >= 30 ? Theme.EMBER : Theme.TEXT));
-		grid.add(new StatTile(String.valueOf(a.getDrops().size()), "Purples", a.getDrops().isEmpty() ? "none yet" : "1 in " + Math.max(1, Math.round(clears / (double) a.getDrops().size())), Theme.PURPLE));
-		grid.add(new StatTile(a.getKc() > 0 ? Format.count(a.getKc()) : String.valueOf(clears), "KC", "clears", Theme.TEXT));
+		int purples = a.getDrops().size();
+		String rate = purples == 0 ? "none yet" : clears >= purples ? "1 in " + Math.round(clears / (double) purples) : "rate unknown";
+		grid.add(new StatTile(String.valueOf(purples), "Purples", rate, purples == 0 ? Theme.TEXT_FAINT : Theme.PURPLE));
+		int kc = Math.max(a.getKc(), clears);
+		grid.add(new StatTile(Format.count(kc), "KC", "in all", Theme.TEXT));
 		stack.add(grid);
 
 		stack.add(new SectionHeader("Uniques"));
@@ -417,15 +487,51 @@ public class ArchivePanel extends PluginPanel
 			Drop d = drops.get(i);
 			String when = (d.getKc() > 0 ? "KC " + Format.count(d.getKc()) + ", " : "") + Format.shortDay(d.getAt());
 			String after = d.getDry() <= 1 ? "first clear" : "after " + d.getDry() + " clears";
-			log.add(dropLine(d.getUnique(), when, after));
+			JComponent line = dropLine(d.getUnique(), when, after);
+			line.setComponentPopupMenu(menu("Remove this purple",
+				"Remove the " + d.getUnique() + " from " + Format.day(d.getAt()) + "? Only do this if it never dropped; the clears it took go back onto your dry streak.",
+				() -> onDeleteDrop.accept(d.getAt(), d.getUnique())));
+			Ui.inheritPopup(line);
+			log.add(line);
 		}
 		if (drops.isEmpty())
 		{
 			log.add(Ui.wrapped("No purples yet. Each one lands here with the completion it came on and how long it took.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 24));
 		}
 		stack.add(log);
-		stack.add(Ui.wrapped("Jagex publishes the archive's drop rates in its second week; the odds of your dry streak come with them.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		if (!drops.isEmpty())
+		{
+			stack.add(Ui.wrapped("Right-click a purple that never dropped to remove it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
 		setPage(spoilsPage, stack);
+	}
+
+	private static String describe(Run r)
+	{
+		String party = Records.BUCKETS[Records.bucket(r.getTeamSize())].toLowerCase();
+		if (r.isCompleted())
+		{
+			return Format.ticks(r.getTicks()) + " " + party + " clear";
+		}
+		return party + (r.getOutcome() == Outcome.WIPED ? " wipe" : " run");
+	}
+
+	/** A right-click menu with one action, asked about first since it cannot be undone. */
+	private JPopupMenu menu(String label, String question, Runnable action)
+	{
+		JPopupMenu popup = new JPopupMenu();
+		JMenuItem item = new JMenuItem(label);
+		item.addActionListener(e ->
+		{
+			int answer = JOptionPane.showConfirmDialog(this, Ui.wrapped(question, Theme.body(), null, 240).getText(),
+				label, JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+			if (answer == JOptionPane.OK_OPTION)
+			{
+				action.run();
+			}
+		});
+		popup.add(item);
+		return popup;
 	}
 
 	private static JComponent line(String label, String value, Color color)
