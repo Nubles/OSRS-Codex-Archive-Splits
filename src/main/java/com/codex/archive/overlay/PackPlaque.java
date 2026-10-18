@@ -36,7 +36,7 @@ public class PackPlaque extends Overlay
 	}
 
 	@Override
-	public Dimension render(Graphics2D g)
+	public Dimension render(Graphics2D graphics)
 	{
 		View v = view;
 		if (!enabled || v == null || !v.inLobby)
@@ -55,11 +55,15 @@ public class PackPlaque extends Overlay
 			{
 				sb.append(", ");
 			}
-			sb.append(e.getValue()).append(' ').append(e.getKey().getTitle().toLowerCase());
+			Supply s = e.getKey();
+			int n = e.getValue();
+			sb.append(n).append(' ').append(s == Supply.FOOD ? "food"
+				: s.getTitle().toLowerCase().replaceAll("s$", "") + (n == 1 ? " dose" : " doses"));
 		}
 		String head = "Pack short";
 		String body = sb.toString();
 
+		Graphics2D g = (Graphics2D) graphics.create();
 		Theme.smooth(g);
 		g.setFont(Theme.title());
 		FontMetrics bold = g.getFontMetrics();
@@ -77,6 +81,7 @@ public class PackPlaque extends Overlay
 		Ui.shadowed(g, head, x, base, Theme.EMBER);
 		g.setFont(Theme.small());
 		Ui.shadowed(g, body, x, base + small.getHeight() + 2, Theme.TEXT);
+		g.dispose();
 		return new Dimension(width, height);
 	}
 }

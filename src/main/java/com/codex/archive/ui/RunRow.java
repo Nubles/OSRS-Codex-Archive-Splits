@@ -1,7 +1,6 @@
 package com.codex.archive.ui;
 
 import com.codex.archive.core.Outcome;
-import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -16,12 +15,15 @@ class RunRow extends JComponent
 {
 	private final Run run;
 	private final boolean best;
+	/** The party size's best time, for the gap under each clear; -1 with none. */
+	private final int bestTicks;
 	private final long now;
 
-	RunRow(Run run, boolean best, long now)
+	RunRow(Run run, boolean best, int bestTicks, long now)
 	{
 		this.run = run;
 		this.best = best;
+		this.bestTicks = bestTicks;
 		this.now = now;
 		setOpaque(false);
 		setPreferredSize(new Dimension(10, 32));
@@ -58,10 +60,25 @@ class RunRow extends JComponent
 		}
 		int tw = body.stringWidth(time);
 		Ui.shadowed(g, time, w - 6 - tw, 14, color);
-		String party = Records.BUCKETS[Records.bucket(run.getTeamSize())];
+		// Under the time: the best itself, or how far off it a clear was. The page is one party size, so it needs no saying.
 		g.setFont(Theme.small());
-		g.setColor(Theme.TEXT_FAINT);
-		String note = best ? "best, " + party : party;
+		String note = "";
+		Color noteColor = Theme.TEXT_FAINT;
+		if (best)
+		{
+			note = "best";
+			noteColor = Theme.GOLD;
+		}
+		else if (run.isCompleted() && bestTicks >= 0)
+		{
+			note = Format.delta(run.getTicks() - bestTicks);
+			noteColor = Theme.mix(Theme.BEHIND, Theme.TEXT_FAINT, 0.45);
+		}
+		else if (!run.isCompleted())
+		{
+			note = "at " + Format.ticks(run.getTicks());
+		}
+		g.setColor(noteColor);
 		g.drawString(note, w - 6 - small.stringWidth(note), h - 6);
 
 		int x = 6;

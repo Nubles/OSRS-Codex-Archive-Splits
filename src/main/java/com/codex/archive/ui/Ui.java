@@ -51,6 +51,22 @@ public final class Ui
 		}
 	}
 
+	/** Lets a right-click anywhere on a row, its labels included, open the row's menu. */
+	static void inheritPopup(Container root)
+	{
+		for (Component child : root.getComponents())
+		{
+			if (child instanceof javax.swing.JComponent)
+			{
+				((javax.swing.JComponent) child).setInheritsPopupMenu(true);
+			}
+			if (child instanceof Container)
+			{
+				inheritPopup((Container) child);
+			}
+		}
+	}
+
 	/** Text with the one pixel black shadow the game puts under its own lettering. */
 	public static void shadowed(Graphics2D g, String text, int x, int y, Color color)
 	{

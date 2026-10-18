@@ -1,6 +1,9 @@
 package com.codex.archive.core;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Personal bests and averages worked out from the run history. Times are only compared between
@@ -111,6 +114,55 @@ public final class Records
 			}
 		}
 		return n == 0 ? -1 : (int) (sum / n);
+	}
+
+	/** Every run that holds a record: a best time, a best room or a best fight, in any party size. */
+	public static Set<Run> holders(List<Run> runs)
+	{
+		Set<Run> out = Collections.newSetFromMap(new IdentityHashMap<>());
+		for (int bucket = 0; bucket < BUCKETS.length; bucket++)
+		{
+			Run best = best(runs, bucket);
+			if (best != null)
+			{
+				out.add(best);
+			}
+			for (int row = 0; row < Encounter.ROWS; row++)
+			{
+				Run holder = null;
+				for (Run r : runs)
+				{
+					Split s = r.split(row);
+					if (bucket(r.getTeamSize()) == bucket && s != null && s.isDone()
+						&& (holder == null || s.roomTicks(0) < holder.split(row).roomTicks(0)))
+					{
+						holder = r;
+					}
+				}
+				if (holder != null)
+				{
+					out.add(holder);
+				}
+			}
+			for (Encounter e : Encounter.values())
+			{
+				Run holder = null;
+				for (Run r : runs)
+				{
+					Split s = r.split(e.getRow());
+					if (bucket(r.getTeamSize()) == bucket && s != null && s.isDone() && s.getEncounter() == e
+						&& (holder == null || s.fightTicks(0) < holder.split(e.getRow()).fightTicks(0)))
+					{
+						holder = r;
+					}
+				}
+				if (holder != null)
+				{
+					out.add(holder);
+				}
+			}
+		}
+		return out;
 	}
 
 	public static int count(List<Run> runs, Outcome outcome)

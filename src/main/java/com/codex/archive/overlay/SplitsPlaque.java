@@ -23,6 +23,8 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 public class SplitsPlaque extends Overlay
 {
 	private static final int PAD = 7;
+	/** After this long with no boss recognised, the plaque stops calling it the walk in, a minute and a half. */
+	private static final int WALK_IN_TICKS = 150;
 
 	private volatile View view;
 	private volatile boolean enabled;
@@ -43,40 +45,63 @@ public class SplitsPlaque extends Overlay
 	}
 
 	@Override
-	public Dimension render(Graphics2D g)
+	public Dimension render(Graphics2D graphics)
 	{
 		View v = view;
-		if (!enabled || v == null || v.live == null || v.archive == null)
+		if (!enabled || v == null || v.archive == null || v.live == null && v.cleared == null)
 		{
 			return null;
 		}
-		Run run = v.live;
-		int row = 0;
-		while (row < Encounter.ROWS && run.split(row) != null && run.split(row).isDone())
+		Run run = v.live != null ? v.live : v.cleared;
+		int row = run.reached();
+		boolean done = row >= Encounter.ROWS || run.isCompleted();
+		Split split = done ? null : run.split(row);
+		Run best = v.liveBest;
+		Integer delta;
+		if (done)
 		{
-			row++;
+			delta = best == null ? null : run.getTicks() - best.getTicks();
 		}
-		Split split = row < Encounter.ROWS ? run.split(row) : null;
-		Run best = Records.best(v.archive.getRuns(), Records.bucket(run.getTeamSize()));
-		Integer delta = row > 0 ? Records.delta(run, best, row - 1) : null;
+		else
+		{
+			delta = row > 0 ? Records.delta(run, best, row - 1) : null;
+		}
 
-		String room = row >= Encounter.ROWS ? "Cleared" : split == null ? (row == 0 ? "Entering" : "Next room") : split.getEncounter().getShortName();
-		String roomClock = row >= Encounter.ROWS ? "" : Format.ticks(split == null ? run.getTicks() - lastEnd(run, row) : split.roomTicks(run.getTicks()));
+		String room;
+		if (done)
+		{
+			room = "Cleared";
+		}
+		else if (split != null)
+		{
+			room = split.getEncounter().getShortName();
+		}
+		else if (row > 0)
+		{
+			room = "Next room";
+		}
+		else
+		{
+			// No boss recognised yet: early on that is the walk in; much later, a run the plugin cannot follow by name.
+			room = run.getTicks() < WALK_IN_TICKS ? "Entering" : "In the archive";
+		}
+		String roomClock = done ? (best == null || delta < 0 ? "new best" : "")
+			: Format.ticks(split == null ? run.getTicks() - lastEnd(run) : split.roomTicks(run.getTicks()));
 		String total = Format.ticks(run.getTicks());
 		String deltaText = delta == null ? null : Format.delta(delta);
 
+		Graphics2D g = (Graphics2D) graphics.create();
 		Theme.smooth(g);
 		g.setFont(Theme.title());
 		FontMetrics bold = g.getFontMetrics();
 		g.setFont(Theme.small());
 		FontMetrics small = g.getFontMetrics();
 		int icon = 14;
-		int line1 = icon + 6 + bold.stringWidth(room) + 10 + small.stringWidth(roomClock);
-		int line2 = small.stringWidth("Run " + total) + (deltaText == null ? 0 : 10 + small.stringWidth(deltaText));
+		int line1 = icon + 6 + bold.stringWidth(room) + 12 + small.stringWidth(roomClock);
+		int line2 = small.stringWidth("Run " + total) + (deltaText == null ? 0 : 12 + small.stringWidth(deltaText));
 		int width = PAD * 2 + Math.max(line1, line2 + icon + 6);
 		int height = PAD * 2 + bold.getHeight() + small.getHeight();
 
-		boolean done = row >= Encounter.ROWS;
 		Plaque.paint(g, width, height, done ? Theme.alpha(Theme.GOLD, 190) : Theme.alpha(Theme.TEAL, 150));
 		int x = PAD;
 		int base = PAD + bold.getAscent();
@@ -85,7 +110,7 @@ public class SplitsPlaque extends Overlay
 		g.setFont(Theme.title());
 		Ui.shadowed(g, room, x, base, done ? Theme.GOLD_BRIGHT : Theme.mix(Theme.TEAL, Theme.TEXT, 0.5));
 		g.setFont(Theme.small());
-		Ui.shadowed(g, roomClock, width - PAD - small.stringWidth(roomClock), base, Theme.TEXT);
+		Ui.shadowed(g, roomClock, width - PAD - small.stringWidth(roomClock), base, done ? Theme.GOLD_BRIGHT : Theme.TEXT);
 
 		int base2 = base + small.getHeight() + 2;
 		Ui.shadowed(g, "Run " + total, x, base2, done ? Theme.GOLD : Theme.TEXT_MUTED);
@@ -94,13 +119,21 @@ public class SplitsPlaque extends Overlay
 			Color c = Theme.delta(delta);
 			Ui.shadowed(g, deltaText, width - PAD - small.stringWidth(deltaText), base2, c);
 		}
+		g.dispose();
 		return new Dimension(width, height);
 	}
 
-	/** When the last boss fell, so the walk to the next room has a clock too. */
-	private static int lastEnd(Run run, int row)
+	/** When the furthest boss so far fell, so the walk to the next room has a clock too. */
+	private static int lastEnd(Run run)
 	{
-		Split prev = row > 0 ? run.split(row - 1) : null;
-		return prev == null ? 0 : prev.getEndTick();
+		int end = 0;
+		for (Split s : run.getSplits())
+		{
+			if (s.isDone())
+			{
+				end = Math.max(end, s.getEndTick());
+			}
+		}
+		return end;
 	}
 }

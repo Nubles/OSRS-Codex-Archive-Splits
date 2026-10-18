@@ -121,7 +121,24 @@ public class Crest extends JComponent
 		g.drawString(Ui.clip(heading, small, room), tx, 22);
 
 		int top = 27;
-		int figureW = paintLarge(g, figure, tx, top, live);
+		int figureW;
+		if (figure == null || figure.isEmpty())
+		{
+			figureW = 0;
+		}
+		else if (figure.equals("-"))
+		{
+			// Nothing to show yet: a quiet line in place of a lone, broken-looking dash.
+			g.setFont(Theme.title());
+			String none = "No clear yet";
+			Ui.shadowed(g, Ui.clip(none, g.getFontMetrics(), room), tx, top + 18, Theme.GOLD_DIM);
+			figureW = g.getFontMetrics().stringWidth(none);
+			g.setFont(Theme.small());
+		}
+		else
+		{
+			figureW = paintLarge(g, figure, tx, top, live);
+		}
 		if (unit != null)
 		{
 			g.setFont(Theme.small());

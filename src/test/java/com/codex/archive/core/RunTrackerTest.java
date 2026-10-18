@@ -24,11 +24,11 @@ public class RunTrackerTest
 	{
 		t.engage(e, engage);
 		t.fell(e, fall, false);
-		for (int i = fall; i <= fall + RunTracker.CONFIRM_TICKS; i++)
+		for (int i = fall; i <= fall + RunTracker.FINAL_CONFIRM_TICKS; i++)
 		{
 			t.tick(i);
 		}
-		return fall + RunTracker.CONFIRM_TICKS;
+		return fall + RunTracker.FINAL_CONFIRM_TICKS;
 	}
 
 	@Test
@@ -172,5 +172,199 @@ public class RunTrackerTest
 		fight(t, Encounter.GUARDIAN, 1, 10);
 		t.seeTeam(6);
 		assertEquals(4, t.view(20).getTeamSize());
+	}
+
+	@Test
+	public void aLongPhaseChangeReopensTheSplit()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 3, null);
+		t.engage(Encounter.GUARDIAN, 5);
+		t.fell(Encounter.GUARDIAN, 60, false);
+		// A cutscene between forms, longer than the confirmation.
+		for (int i = 60; i < 80; i++)
+		{
+			t.tick(i);
+		}
+		assertEquals(1, t.nextRow());
+		t.engage(Encounter.GUARDIAN, 85);
+		assertEquals("the second form reopens the split", 0, t.nextRow());
+		fight(t, Encounter.GUARDIAN, 86, 150);
+		Run view = t.view(170);
+		assertEquals(1, view.getSplits().size());
+		assertEquals(150, view.split(0).getEndTick());
+		assertEquals(5, view.split(0).getEngageTick());
+	}
+
+	@Test
+	public void aBossLongDownIsNotReopened()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 3, null);
+		fight(t, Encounter.GUARDIAN, 5, 60);
+		for (int i = 70; i < 70 + RunTracker.REOPEN_TICKS + 10; i++)
+		{
+			t.tick(i);
+		}
+		t.engage(Encounter.GUARDIAN, 200);
+		assertEquals(1, t.nextRow());
+		assertEquals(60, t.view(201).split(0).getEndTick());
+	}
+
+	@Test
+	public void aGuessAtAnUnnamedBossGivesWayToTheNamedOne()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 3, null);
+		fight(t, Encounter.GUARDIAN, 1, 10);
+		fight(t, Encounter.BORK, 20, 30);
+		// A big add in the Dreadnoth room is hit first and taken for the Necromancer.
+		Encounter guess = t.resolve("Jellied spawn", 200);
+		assertEquals(Encounter.NECROMANCER, guess);
+		t.engage(guess, 45);
+		t.engage(Encounter.DREADNOTH, 50);
+		fight(t, Encounter.DREADNOTH, 51, 120);
+		Split s = t.view(140).split(2);
+		assertEquals(Encounter.DREADNOTH, s.getEncounter());
+		assertEquals(50, s.getEngageTick());
+		assertEquals(120, s.getEndTick());
+	}
+
+	@Test
+	public void theGameSayingCompleteEndsTheRunEvenWithTheLastBossUnseen()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 100, 2, null);
+		fight(t, Encounter.GUARDIAN, 110, 200);
+		fight(t, Encounter.EZEKIEL, 230, 330);
+		fight(t, Encounter.DREADNOTH, 360, 500);
+		fight(t, Encounter.XARTH, 520, 650);
+		// The final boss is never recognised; the completion message comes.
+		t.complete(900);
+		assertTrue(t.isFinished());
+		assertTrue(t.isAnnounced());
+		Run run = t.finish(950, false);
+		assertEquals(Outcome.COMPLETED, run.getOutcome());
+		assertEquals(800, run.getTicks());
+		assertEquals(4, run.getSplits().size());
+	}
+
+	@Test
+	public void theGameSayingCompleteKeepsTheFinalFall()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 2, null);
+		fight(t, Encounter.GUARDIAN, 1, 10);
+		fight(t, Encounter.BORK, 20, 30);
+		fight(t, Encounter.DREADNOTH, 40, 50);
+		fight(t, Encounter.TRIO, 60, 70);
+		t.engage(Encounter.HOODED_FIGURE, 90);
+		t.fell(Encounter.HOODED_FIGURE, 200, false);
+		t.tick(201);
+		assertEquals("the clock stops at the fall while it is confirmed", 200, t.elapsed(203));
+		t.complete(202);
+		Run run = t.finish(260, false);
+		assertEquals(200, run.getTicks());
+		assertEquals(200, run.split(4).getEndTick());
+		// Nothing reopens once the game has spoken.
+		t.engage(Encounter.HOODED_FIGURE, 205);
+		assertFalse(t.isActive());
+	}
+
+	@Test
+	public void anOpenEarlierBossIsDroppedWhenTheRunCompletes()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 2, null);
+		fight(t, Encounter.GUARDIAN, 1, 10);
+		t.engage(Encounter.BORK, 20);
+		t.complete(400);
+		Run run = t.finish(410, false);
+		assertEquals(Outcome.COMPLETED, run.getOutcome());
+		assertNull(run.split(1));
+		assertEquals(400, run.getTicks());
+	}
+
+	@Test
+	public void theFirstFallReportedIsTheOneKept()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 2, null);
+		t.engage(Encounter.GUARDIAN, 5);
+		t.fell(Encounter.GUARDIAN, 40, false);
+		// The body leaving a few ticks later reports again.
+		t.fell(Encounter.GUARDIAN, 44, false);
+		for (int i = 40; i < 60; i++)
+		{
+			t.tick(i);
+		}
+		assertEquals(40, t.view(60).split(0).getEndTick());
+	}
+
+	@Test
+	public void everyPurpleOfARunIsKept()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 2, null);
+		t.purple("Rondache");
+		t.purple("Zeal");
+		assertEquals(2, t.purples().size());
+		assertEquals("Rondache", t.view(1).getPurple());
+		t.begin(0, 0, 2, null);
+		assertTrue(t.purples().isEmpty());
+	}
+
+	@Test
+	public void aGuessedAddThatDiedFirstStillGivesWayToTheNamedBoss()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 3, null);
+		fight(t, Encounter.GUARDIAN, 1, 10);
+		fight(t, Encounter.BORK, 20, 30);
+		// A big add is hit first, taken for the Necromancer, and dies before Dreadnoth is touched.
+		Encounter guess = t.resolve("Jellied spawn", 200);
+		assertEquals(Encounter.NECROMANCER, guess);
+		fight(t, guess, 45, 60);
+		assertEquals(3, t.nextRow());
+		// Long after the add, the row's real boss.
+		t.engage(Encounter.DREADNOTH, 150);
+		assertEquals("the guessed split reopens for the named boss", 2, t.nextRow());
+		fight(t, Encounter.DREADNOTH, 151, 300);
+		Split s = t.view(320).split(2);
+		assertEquals(Encounter.DREADNOTH, s.getEncounter());
+		assertEquals(30, s.getStartTick());
+		assertEquals(150, s.getEngageTick());
+		assertEquals(300, s.getEndTick());
+		assertEquals(1, countRow(t.view(320), 2));
+	}
+
+	@Test
+	public void aReopenedGuessCanStillGiveWayToTheNamedBoss()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 3, null);
+		fight(t, Encounter.GUARDIAN, 1, 10);
+		fight(t, Encounter.BORK, 20, 30);
+		Encounter guess = t.resolve("Jellied spawn", 200);
+		fight(t, guess, 45, 60);
+		// Another big add within the reopen window reopens the guess.
+		Encounter again = t.resolve("Jellied spawn", 200);
+		assertEquals(Encounter.NECROMANCER, again);
+		t.engage(again, 80);
+		assertEquals(2, t.nextRow());
+		t.engage(Encounter.DREADNOTH, 90);
+		fight(t, Encounter.DREADNOTH, 91, 200);
+		assertEquals(Encounter.DREADNOTH, t.view(220).split(2).getEncounter());
+		assertEquals(90, t.view(220).split(2).getEngageTick());
+	}
+
+	private static int countRow(Run run, int row)
+	{
+		int n = 0;
+		for (Split s : run.getSplits())
+		{
+			n += s.getEncounter().getRow() == row ? 1 : 0;
+		}
+		return n;
 	}
 }

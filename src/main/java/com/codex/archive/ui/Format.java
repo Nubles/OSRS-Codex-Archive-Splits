@@ -59,6 +59,23 @@ public final class Format
 		return ticks < 0 ? "-" + t : ticks > 0 ? "+" + t : t;
 	}
 
+	/** A gap in time without a sign: "4.2s" under a minute, "1:12.0" above. */
+	public static String span(int ticks)
+	{
+		int abs = Math.abs(ticks);
+		return abs < 100 ? String.format(Locale.ENGLISH, "%d.%ds", abs * 6 / 10, abs * 6 % 10) : ticks(abs);
+	}
+
+	/** A delta in words, for the chat box: "4.2s ahead of your best", "1:12.0 behind your best". */
+	public static String versus(int ticks)
+	{
+		if (ticks == 0)
+		{
+			return "level with your best";
+		}
+		return span(ticks) + (ticks < 0 ? " ahead of" : " behind") + " your best";
+	}
+
 	public static String count(long n)
 	{
 		return String.format(Locale.ENGLISH, "%,d", n);

@@ -8,6 +8,8 @@ import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.geom.RoundRectangle2D;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import javax.swing.JComponent;
 
@@ -40,7 +42,28 @@ public class PackCard extends JComponent
 	{
 		this.have = have;
 		this.want = want;
+		int h = TOP + ROW * rows().size() + 6;
+		if (getPreferredSize().height != h)
+		{
+			setPreferredSize(new Dimension(10, h));
+			setMinimumSize(new Dimension(10, h));
+			revalidate();
+		}
 		repaint();
+	}
+
+	/** The supplies to draw: against targets only those with one set, otherwise only those used. */
+	private List<Supply> rows()
+	{
+		List<Supply> out = new ArrayList<>();
+		for (Supply s : Supply.values())
+		{
+			if (want != null ? count(want, s) > 0 : count(have, s) > 0)
+			{
+				out.add(s);
+			}
+		}
+		return out;
 	}
 
 	@Override
@@ -75,19 +98,25 @@ public class PackCard extends JComponent
 			g.drawString(verdict, w - 10 - small.stringWidth(verdict), 16);
 		}
 
+		// One column for the figures, as wide as the widest, so every bar ends at the same place.
+		int column = 0;
+		for (Supply s : rows())
+		{
+			column = Math.max(column, small.stringWidth(figure(s)));
+		}
 		int y = TOP;
-		for (Supply s : Supply.values())
+		for (Supply s : rows())
 		{
 			int n = count(have, s);
 			int target = want == null ? 0 : count(want, s);
 			g.setColor(Theme.TEXT_MUTED);
 			g.drawString(s.getTitle(), 10, y + small.getAscent() + 1);
-			String figure = want == null ? n + " " + s.getUnit() : n + " / " + target;
+			String figure = figure(s);
 			Color figureColor = want == null ? Theme.TEXT : target == 0 || n >= target ? Theme.TEXT : Theme.EMBER;
 			Ui.shadowed(g, figure, w - 10 - small.stringWidth(figure), y + small.getAscent() + 1, figureColor);
 
 			int bx = 70;
-			int bw = w - bx - 10 - small.stringWidth(figure) - 8;
+			int bw = w - bx - 10 - column - 8;
 			if (bw > 12)
 			{
 				int by = y + 4;
@@ -107,6 +136,12 @@ public class PackCard extends JComponent
 			y += ROW;
 		}
 		g.dispose();
+	}
+
+	private String figure(Supply s)
+	{
+		int n = count(have, s);
+		return want == null ? n + " " + s.getUnit() : n + " / " + count(want, s);
 	}
 
 	private static int count(Map<Supply, Integer> map, Supply s)

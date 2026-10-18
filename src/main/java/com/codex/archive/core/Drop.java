@@ -41,4 +41,9 @@ public class Drop
 	{
 		return dry;
 	}
+
+	void addDry(int clears)
+	{
+		dry = Math.max(0, dry + clears);
+	}
 }

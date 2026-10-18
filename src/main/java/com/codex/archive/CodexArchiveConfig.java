@@ -32,7 +32,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "chatSplits",
 		name = "Splits in chat",
-		description = "When a boss falls, write its room time and how it compares with your best in the chat box",
+		description = "When a boss falls, write its time and how it stands against your best in the chat box, and the final time at the end",
 		position = 1
 	)
 	default boolean chatSplits()
@@ -43,7 +43,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "packPlaque",
 		name = "Pack warning",
-		description = "In the lobby, show a plaque when your pack is short of what you set below",
+		description = "In the lobby, show a plaque naming what your pack is short of, against the amounts below",
 		position = 11,
 		section = PACK
 	)
@@ -56,7 +56,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "food",
 		name = "Food",
-		description = "Pieces of food to bring",
+		description = "Pieces of food to bring; 0 leaves food out of the check",
 		position = 12,
 		section = PACK
 	)
@@ -69,7 +69,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "brews",
 		name = "Brew doses",
-		description = "Doses of Saradomin brew to bring",
+		description = "Doses of Saradomin brew to bring; 0 leaves brews out of the check",
 		position = 13,
 		section = PACK
 	)
@@ -82,7 +82,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "restores",
 		name = "Restore doses",
-		description = "Doses of super restore, prayer potion or sanfew serum to bring",
+		description = "Doses of super restore, prayer potion or sanfew serum to bring; 0 leaves them out of the check",
 		position = 14,
 		section = PACK
 	)
@@ -95,7 +95,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "boosts",
 		name = "Boost doses",
-		description = "Doses of combat, ranging or magic potions to bring",
+		description = "Doses of combat, ranging or magic potions to bring; 0 leaves them out of the check",
 		position = 15,
 		section = PACK
 	)

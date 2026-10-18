@@ -96,6 +96,23 @@ public class Run
 		return null;
 	}
 
+	/**
+	 * How far the run has come: one past the furthest boss down. A row the client missed does not
+	 * hold the count back, so the row after the furthest fall is always the one being fought.
+	 */
+	public int reached()
+	{
+		int n = 0;
+		for (Split s : splits)
+		{
+			if (s.isDone() && s.getEncounter() != null)
+			{
+				n = Math.max(n, s.getEncounter().getRow() + 1);
+			}
+		}
+		return n;
+	}
+
 	/** The doors this run took, as short names: "Bork, Dreadnoth, Trio". */
 	public String route()
 	{
@@ -105,7 +122,11 @@ public class Run
 			Split s = split(row);
 			if (s == null)
 			{
-				break;
+				if (row < reached())
+				{
+					sb.append(sb.length() > 0 ? ", " : "").append("?");
+				}
+				continue;
 			}
 			if (sb.length() > 0)
 			{

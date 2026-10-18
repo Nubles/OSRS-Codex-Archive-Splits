@@ -60,6 +60,13 @@ public class Split
 		endTick = -1;
 	}
 
+	/** A guessed boss turned out to be the row's other, named boss: the split is theirs, from their first hit. */
+	void retarget(Encounter encounter, int engageTick)
+	{
+		this.encounter = encounter;
+		this.engageTick = engageTick;
+	}
+
 	/** The whole room, from the last boss falling to this one falling. */
 	public int roomTicks(int now)
 	{
