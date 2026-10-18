@@ -21,7 +21,7 @@ public final class Messages
 	/** The message without the game's colour and image tags. */
 	public static String plain(String message)
 	{
-		return message == null ? "" : message.replaceAll("<[^>]*>", "").replace(' ', ' ');
+		return message == null ? "" : message.replaceAll("<[^>]*>", "").replace('\u00A0', ' ');
 	}
 
 	/** @return the completion count the message announces, or -1 when it announces none */
