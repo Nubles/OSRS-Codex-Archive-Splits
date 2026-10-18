@@ -93,4 +93,69 @@ public class ArchiveTest
 		assertEquals(0, a.getDry());
 		assertTrue(a.getDrops().isEmpty());
 	}
+
+	private static Run timed(long at, int team, int ticks)
+	{
+		RunTracker t = new RunTracker();
+		t.begin(at, 0, team, null);
+		t.engage(Encounter.GUARDIAN, 1);
+		t.fell(Encounter.GUARDIAN, ticks / 2, false);
+		t.tick(ticks / 2 + RunTracker.CONFIRM_TICKS);
+		t.complete(ticks);
+		return t.finish(ticks + 5, false);
+	}
+
+	@Test
+	public void oldRunsGoButRecordsStay()
+	{
+		Archive a = new Archive();
+		a.record(timed(0, 3, 500), null, 0);
+		for (int i = 1; i <= Archive.MAX_RUNS + 50; i++)
+		{
+			a.record(timed(i, 3, 900), null, 0);
+		}
+		assertEquals(Archive.MAX_RUNS, a.getRuns().size());
+		assertEquals("the best is kept however old", 0, a.getRuns().get(0).getStartedAt());
+		assertEquals(500, Records.best(a.getRuns(), Records.bucket(3)).getTicks());
+		assertEquals("clears are counted apart from the runs kept", Archive.MAX_RUNS + 51, a.clears(Records.bucket(3)));
+	}
+
+	@Test
+	public void countsComeBackForAnOlderSave()
+	{
+		Archive a = new Archive();
+		a.record(timed(1, 2, 500), null, 0);
+		a.record(timed(2, 2, 600), null, 0);
+		RunTracker t = new RunTracker();
+		t.begin(3, 0, 2, null);
+		t.died();
+		a.record(t.finish(40, true), null, 0);
+		com.google.gson.Gson gson = new com.google.gson.Gson();
+		com.google.gson.JsonObject json = gson.toJsonTree(a).getAsJsonObject();
+		json.remove("clears");
+		json.remove("wipes");
+		Archive old = gson.fromJson(json, Archive.class).repair();
+		assertEquals(2, old.clears(Records.bucket(2)));
+		assertEquals(1, old.wipes(Records.bucket(2)));
+		assertTrue(old.removeRun(3));
+		assertEquals(0, old.wipes(Records.bucket(2)));
+	}
+
+	@Test
+	public void longestDryCountsTheStreakNow()
+	{
+		Archive a = new Archive();
+		for (int i = 0; i < 4; i++)
+		{
+			a.record(clear(i), null, 0);
+		}
+		a.purple("Zeal", 10);
+		a.record(clear(20), null, 0);
+		assertEquals(4, a.longestDry());
+		for (int i = 0; i < 6; i++)
+		{
+			a.record(clear(30 + i), null, 0);
+		}
+		assertEquals(7, a.longestDry());
+	}
 }

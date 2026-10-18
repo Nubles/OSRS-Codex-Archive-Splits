@@ -423,6 +423,11 @@ public class CodexArchivePlugin extends Plugin
 				announceSplit(row - 1);
 				announcedRow = row;
 			}
+			else if (row < announcedRow)
+			{
+				// A boss came back after its split closed; its true time goes to the chat box when it falls again.
+				announcedRow = row;
+			}
 			dirty = true;
 		}
 		if (lastClear != null && (tick - runEnded > CLEARED_TICKS || !instance))

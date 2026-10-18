@@ -192,7 +192,7 @@ public class ArchivePanel extends PluginPanel
 		crest.update(heading, best == null ? "-" : Format.ticks(best.getTicks()),
 			best == null ? null : Records.BUCKETS[bucket].toLowerCase(), false, status,
 			new String[]{"KC", "Dry", "Purples"},
-			new String[]{a.getKc() > 0 ? Format.count(a.getKc()) : String.valueOf(Records.count(a.getRuns(), Outcome.COMPLETED)),
+			new String[]{Format.count(Math.max(a.getKc(), totalClears(a))),
 				String.valueOf(a.getDry()), String.valueOf(a.getDrops().size())},
 			new Color[]{Theme.TEXT, a.getDry() >= 30 ? Theme.EMBER : Theme.TEXT, a.getDrops().isEmpty() ? Theme.TEXT_FAINT : Theme.PURPLE});
 	}
@@ -388,7 +388,9 @@ public class ArchivePanel extends PluginPanel
 		grid.add(new StatTile(best == null ? "-" : Format.ticks(best.getTicks()), "Best", best == null ? "no clear yet" : Format.shortDay(best.getStartedAt()), Theme.GOLD_BRIGHT));
 		grid.add(new StatTile(sob < 0 ? "-" : Format.ticks(sob), "Sum of best", sob < 0 || best == null ? "every room" : Format.delta(sob - best.getTicks()) + " on best", Theme.TEAL));
 		grid.add(new StatTile(avg < 0 ? "-" : Format.ticks(avg), "Average", "last 10 clears", Theme.TEXT));
-		grid.add(new StatTile(Format.count(done), "Clears", wiped == 0 ? "no wipes" : wiped + (wiped == 1 ? " wipe" : " wipes"), Theme.TEXT));
+		int allClears = view.archive.clears(bucket);
+		int allWipes = view.archive.wipes(bucket);
+		grid.add(new StatTile(Format.count(allClears), "Clears", allWipes == 0 ? "no wipes" : Format.count(allWipes) + (allWipes == 1 ? " wipe" : " wipes"), Theme.TEXT));
 		stack.add(grid);
 
 		stack.add(new SectionHeader("Best rooms", "walk in included"));
@@ -411,7 +413,7 @@ public class ArchivePanel extends PluginPanel
 
 		int inBucket = done + wiped + left;
 		String party = Records.BUCKETS[bucket].toLowerCase();
-		stack.add(new SectionHeader("Recent " + party + " runs", inBucket == 0 ? null : Format.count(inBucket) + " in all"));
+		stack.add(new SectionHeader("Recent " + party + " runs", inBucket > HISTORY ? "latest " + HISTORY : null));
 		Card history = new Card(new GridLayout(0, 1, 0, 0));
 		history.setBorder(new EmptyBorder(2, 4, 2, 4));
 		int shown = 0;
@@ -454,23 +456,31 @@ public class ArchivePanel extends PluginPanel
 			setPage(spoilsPage, stack);
 			return;
 		}
+		// The crest already gives the KC; these say how the luck has gone.
 		JPanel grid = new JPanel(new GridLayout(1, 3, 6, 0));
 		grid.setOpaque(false);
-		int clears = Records.count(a.getRuns(), Outcome.COMPLETED);
-		grid.add(new StatTile(String.valueOf(a.getDry()), "Dry", a.getDry() == 1 ? "clear" : "clears", a.getDry() >= 30 ? Theme.EMBER : Theme.TEXT));
+		int clears = totalClears(a);
+		int longest = a.longestDry();
+		grid.add(new StatTile(String.valueOf(a.getDry()), "Dry", longest > a.getDry() ? "max " + longest : "clears",
+			a.getDry() > 0 && a.getDry() >= longest && !a.getDrops().isEmpty() ? Theme.EMBER : Theme.TEXT));
 		int purples = a.getDrops().size();
 		String rate = purples == 0 ? "none yet" : clears >= purples ? "1 in " + Math.round(clears / (double) purples) : "rate unknown";
 		grid.add(new StatTile(String.valueOf(purples), "Purples", rate, purples == 0 ? Theme.TEXT_FAINT : Theme.PURPLE));
-		int kc = Math.max(a.getKc(), clears);
-		grid.add(new StatTile(Format.count(kc), "KC", "in all", Theme.TEXT));
-		stack.add(grid);
-
-		stack.add(new SectionHeader("Uniques"));
 		Map<String, Integer> counts = new HashMap<>();
 		for (Drop d : a.getDrops())
 		{
 			counts.merge(d.getUnique(), 1, Integer::sum);
 		}
+		int owned = 0;
+		for (String u : Spoils.ALL)
+		{
+			owned += counts.containsKey(u) ? 1 : 0;
+		}
+		grid.add(new StatTile(owned + "/" + Spoils.ALL.length, "Log", owned == Spoils.ALL.length ? "complete" : "uniques",
+			owned == Spoils.ALL.length ? Theme.GOLD_BRIGHT : owned == 0 ? Theme.TEXT_FAINT : Theme.TEXT));
+		stack.add(grid);
+
+		stack.add(new SectionHeader("Uniques"));
 		JPanel uniques = new JPanel(new GridLayout(0, 3, 6, 6));
 		uniques.setOpaque(false);
 		for (String u : Spoils.ALL)
@@ -504,6 +514,16 @@ public class ArchivePanel extends PluginPanel
 			stack.add(Ui.wrapped("Right-click a purple that never dropped to remove it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		}
 		setPage(spoilsPage, stack);
+	}
+
+	private static int totalClears(Archive a)
+	{
+		int n = 0;
+		for (int b = 0; b < Records.BUCKETS.length; b++)
+		{
+			n += a.clears(b);
+		}
+		return n;
 	}
 
 	private static String describe(Run r)
