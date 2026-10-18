@@ -424,7 +424,7 @@ public class ArchivePanel extends PluginPanel
 			{
 				continue;
 			}
-			RunRow row = new RunRow(r, r == Records.best(runs, Records.bucket(r.getTeamSize())), view.now);
+			RunRow row = new RunRow(r, r == best, best == null ? -1 : best.getTicks(), view.now);
 			row.setComponentPopupMenu(menu("Delete this run",
 				"Delete the " + describe(r) + " from " + Format.day(r.getStartedAt()) + " at " + Format.time(r.getStartedAt())
 					+ "? Its times leave your records for good.",
