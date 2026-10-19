@@ -21,9 +21,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The session card: one sitting in the Fractured Archive on the run card's gilt page. The night's
- * best clear large, a ribbon for what the night brought (a purple, a new best, how close it came
- * to the best), then every run as a bar of its time against the night's slowest clear, the best
+ * The session card: one sitting in the Fractured Archive on the run card's gilt page. The sitting's
+ * best clear large, a ribbon for what the sitting brought (a purple, a new best, how close it came
+ * to the best), then every run as a bar of its time against the sitting's slowest clear, the best
  * lit, with its tags: a new best, a first clear, a purple, where a wipe stopped. Beneath, the
  * average clear, the pace and the time between runs.
  */
@@ -92,7 +92,7 @@ public final class SessionCard
 	}
 
 	/**
-	 * What the night brought, in a few words, never a figure the card shows elsewhere: its purples
+	 * What the sitting brought, in a few words, never a figure the card shows elsewhere: its purples
 	 * first, then its new bests, then how near its best clear came to the best before it.
 	 */
 	static String verdict(Sessions.Session s, List<Run> all)
@@ -146,7 +146,7 @@ public final class SessionCard
 		{
 			return "Within " + Format.span(delta) + " of your best";
 		}
-		return s.getWipes() == 0 ? "Every run cleared" : "A night in the archive";
+		return s.getWipes() == 0 ? "Every run cleared" : "A session in the archive";
 	}
 
 	/** The deepest boss the sitting's runs reached, by its short name, or null. */
@@ -229,7 +229,7 @@ public final class SessionCard
 		g.drawString(corner, x + w - small.stringWidth(corner), y + small.getAscent() - 1);
 		y += small.getHeight() + 10;
 
-		// The night's best clear, large; with none, the tries in ember.
+		// The sitting's best clear, large; with none, No clear in ember.
 		Run best = bestRun(s);
 		Font huge = Theme.title().deriveFont(Theme.title().getSize2D() * 3.5f);
 		g.setFont(huge);
@@ -248,7 +248,7 @@ public final class SessionCard
 		if (best != null)
 		{
 			g.setFont(Theme.small());
-			RunCard.centered(g, "BEST OF THE NIGHT", x, w, y + small.getAscent(), Theme.TEXT_MUTED);
+			RunCard.centered(g, "BEST CLEAR", x, w, y + small.getAscent(), Theme.TEXT_MUTED);
 			y += small.getHeight() + 4;
 		}
 		else
@@ -281,7 +281,7 @@ public final class SessionCard
 		RunCard.rule(g, x, y, w);
 		y += 10;
 
-		// Every run, a bar for its time against the slowest clear of the night.
+		// Every run, a bar for its time against the sitting's slowest clear.
 		g.setFont(Theme.small());
 		g.setColor(Theme.GOLD);
 		g.drawString("THE RUNS", x, y + small.getAscent());
