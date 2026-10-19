@@ -32,4 +32,13 @@ public final class StandingTestRuns
 		return t.finish(prev + 50, wiped);
 	}
 
+	/** The run with these others in its party. */
+	public static Run withCrew(Run run, String... names)
+	{
+		for (String name : names)
+		{
+			run.addCrew(name);
+		}
+		return run;
+	}
 }

@@ -53,6 +53,17 @@ public interface CodexArchiveConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "nameOnCard",
+		name = "Name on cards",
+		description = "Write your character's name and your party's on run cards; turn off to share them without any names",
+		position = 3
+	)
+	default boolean nameOnCard()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "packPlaque",
 		name = "Pack warning",
 		description = "In the lobby, show a plaque naming what your pack is short of, against the amounts below",

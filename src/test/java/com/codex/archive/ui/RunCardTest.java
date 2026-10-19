@@ -1,11 +1,14 @@
 package com.codex.archive.ui;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import com.codex.archive.core.Run;
 import com.codex.archive.core.Standing;
 import com.codex.archive.core.StandingTestRuns;
 import java.awt.image.BufferedImage;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
@@ -35,5 +38,25 @@ public class RunCardTest
 			assertEquals(RunCard.WIDTH * RunCard.SCALE, card.getWidth());
 			assertTrue(card.getHeight() > 300);
 		}
+	}
+
+	@Test
+	public void leavesEveryNameOffWhenAskedTo()
+	{
+		Run r = StandingTestRuns.withCrew(StandingTestRuns.run(1_000, 3, false, 100, 300, 500, 700, 1000), "Ashen Reed", "Quill Wright");
+		Standing st = Standing.of(java.util.Collections.emptyList(), r);
+		ArchivePanel panel = new ArchivePanel();
+		panel.update(new View("Gilded Owl", true, null, null, false, null, null, 2_000));
+		BufferedImage nameless = RunCard.render(st, null, false, ZoneId.systemDefault());
+		assertFalse(Arrays.equals(pixels(nameless), pixels(panel.runCard(r))));
+		// The party's names go too, not only the player's: they are other people's.
+		assertFalse(Arrays.equals(pixels(nameless), pixels(RunCard.render(st, null, ZoneId.systemDefault()))));
+		panel.setNameOnCard(false);
+		assertArrayEquals(pixels(nameless), pixels(panel.runCard(r)));
+	}
+
+	private static int[] pixels(BufferedImage image)
+	{
+		return image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
 	}
 }

@@ -223,6 +223,12 @@ public class CodexArchivePlugin extends Plugin
 	{
 		splitsPlaque.setEnabled(config.showPlaque());
 		packPlaque.setEnabled(config.packPlaque());
+		ArchivePanel view = panel;
+		boolean nameOnCard = config.nameOnCard();
+		if (view != null)
+		{
+			SwingUtilities.invokeLater(() -> view.setNameOnCard(nameOnCard));
+		}
 	}
 
 	@Subscribe

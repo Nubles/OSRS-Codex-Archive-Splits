@@ -80,6 +80,8 @@ public class ArchivePanel extends PluginPanel
 	private BiConsumer<BufferedImage, String> onSaveCard = (card, name) -> { };
 	/** A line under the run card's buttons, such as where it was saved; cleared when the run page moves on. */
 	private String cardNote;
+	/** Whether run cards carry names, the character's and the party's; off for sharing them without. */
+	private boolean nameOnCard = true;
 	/** The state moved on while the panel was out of sight; the pages are built when it opens. */
 	private boolean stale;
 	private boolean spoilsStale;
@@ -166,6 +168,12 @@ public class ArchivePanel extends PluginPanel
 		onSaveCard = save;
 	}
 
+	/** Whether run cards carry names, the character's and the party's; called on the Swing thread. */
+	public void setNameOnCard(boolean nameOnCard)
+	{
+		this.nameOnCard = nameOnCard;
+	}
+
 	/** A line under the run card's buttons, such as where it was saved. */
 	public void cardNote(String note)
 	{
@@ -177,7 +185,7 @@ public class ArchivePanel extends PluginPanel
 	/** The run card of a run, measured against the runs of its party size before it. */
 	BufferedImage runCard(Run r)
 	{
-		return RunCard.render(Standing.of(runs(), r), view.player, ZoneId.systemDefault());
+		return RunCard.render(Standing.of(runs(), r), view.player, nameOnCard, ZoneId.systemDefault());
 	}
 
 	private void saveCard(Run r)

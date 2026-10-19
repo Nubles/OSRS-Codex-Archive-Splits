@@ -47,9 +47,22 @@ public final class RunCard
 	/** @param player the name to put on the card, or null to leave it off */
 	public static BufferedImage render(Standing st, String player, ZoneId zone)
 	{
+		return render(st, player, true, zone);
+	}
+
+	/**
+	 * @param player the name to put on the card, or null to leave it off
+	 * @param names false to leave every name off, the player's and the party's, for a card shared without them
+	 */
+	public static BufferedImage render(Standing st, String player, boolean names, ZoneId zone)
+	{
+		if (!names)
+		{
+			player = null;
+		}
 		BufferedImage scratch = new BufferedImage(WIDTH, 1200, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D sg = scratch.createGraphics();
-		int height = content(sg, st, player, zone);
+		int height = content(sg, st, player, names, zone);
 		sg.dispose();
 
 		BufferedImage image = new BufferedImage(WIDTH * SCALE, height * SCALE, BufferedImage.TYPE_INT_ARGB);
@@ -57,12 +70,12 @@ public final class RunCard
 		g.scale(SCALE, SCALE);
 		Theme.smooth(g);
 		frame(g, height, st.isNewBest());
-		content(g, st, player, zone);
+		content(g, st, player, names, zone);
 		g.dispose();
 		return image;
 	}
 
-	private static int content(Graphics2D g, Standing st, String player, ZoneId zone)
+	private static int content(Graphics2D g, Standing st, String player, boolean names, ZoneId zone)
 	{
 		Theme.smooth(g);
 		Run run = st.getRun();
@@ -211,7 +224,7 @@ public final class RunCard
 		}
 		y += tileH + 10;
 
-		if (!run.getCrew().isEmpty())
+		if (names && !run.getCrew().isEmpty())
 		{
 			g.setFont(Theme.small());
 			String with = "With " + crew(run);
