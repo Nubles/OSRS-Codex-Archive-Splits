@@ -521,7 +521,8 @@ public class ArchivePanel extends PluginPanel
 				Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		}
 
-		List<Sessions.Session> sittings = Sessions.of(runs);
+		// Only this party size's runs count, and a sitting without one is not listed here.
+		List<Sessions.Session> sittings = Sessions.of(runs, bucket);
 		if (sittings.size() > 1)
 		{
 			stack.add(new SectionHeader("Sessions", sittings.size() > SESSIONS ? "latest " + SESSIONS : null));
@@ -532,7 +533,7 @@ public class ArchivePanel extends PluginPanel
 				String pace = t.perHour() > 0 ? String.format(java.util.Locale.ENGLISH, ", %.1f an hour", t.perHour()) : "";
 				String sub = t.getBest() < 0 ? "no clear" : t.getBests() == 1 ? "new best" : t.getBests() > 1 ? t.getBests() + " new bests"
 					: "best of " + t.getClears();
-				card.add(twoLine(Format.day(t.getStart()), t.getRuns().size() + (t.getRuns().size() == 1 ? " run" : " runs") + pace,
+				card.add(twoLine(Format.day(t.getStart()), t.getCounted().size() + (t.getCounted().size() == 1 ? " run" : " runs") + pace,
 					t.getBest() < 0 ? "-" : Format.ticks(t.getBest()), sub,
 					t.getBests() > 0 ? Theme.GOLD_BRIGHT : Theme.TEXT));
 			}

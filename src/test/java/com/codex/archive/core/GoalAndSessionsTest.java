@@ -175,4 +175,36 @@ public class GoalAndSessionsTest
 		assertEquals(next.getStart(), Sessions.current(runs, day + 24 * 60 * MIN + 30 * MIN).getStart());
 		assertNull(Sessions.current(runs, day + 48 * 60 * MIN));
 	}
+
+	@Test
+	public void aPartyTabCountsOnlyItsOwnRunsInEachSitting()
+	{
+		long day = 1_000_000_000_000L;
+		List<Run> runs = new ArrayList<>();
+		// An evening of a quick solo clear, then two trio clears; the next day, solo only.
+		runs.add(run(day, 1, ROUTE, 80, 160, 240, 320, 400));
+		runs.add(run(day + 10 * MIN, 3, ROUTE, 120, 240, 360, 480, 600));
+		runs.add(run(day + 26 * MIN, 3, ROUTE, 110, 220, 330, 440, 550));
+		runs.add(run(day + 24 * 60 * MIN, 1, ROUTE, 90, 180, 270, 360, 450));
+		List<Sessions.Session> trio = Sessions.of(runs, 2);
+		// The solo-only day has no trio runs, so the trio tab does not list it.
+		assertEquals(1, trio.size());
+		Sessions.Session evening = trio.get(0);
+		assertEquals(2, evening.getCounted().size());
+		assertEquals(2, evening.getClears());
+		// The solo clear's 400 is not the trio best, and is not in the average.
+		assertEquals(550, evening.getBest());
+		assertEquals(575, evening.getAverage());
+		assertEquals(2, evening.getBests());
+		// The sitting itself is whole: it starts at the solo run, and the downtime spans every run.
+		assertEquals(day, evening.getStart());
+		assertEquals(3, evening.getRuns().size());
+		// Clears an hour counts only trio clears over the whole sitting.
+		double span = Sessions.endOf(runs.get(2)) - day;
+		assertEquals(2 * 3_600_000.0 / span, evening.perHour(), 1e-9);
+		List<Sessions.Session> solo = Sessions.of(runs, 0);
+		assertEquals(2, solo.size());
+		assertEquals(400, solo.get(0).getBest());
+		assertEquals(1, solo.get(0).getClears());
+	}
 }
