@@ -548,12 +548,17 @@ public class ArchivePanel extends PluginPanel
 		if (routes.size() >= 2)
 		{
 			stack.add(new SectionHeader("Routes", "best clear"));
-			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			// Stacked, not a grid: a grid would stretch the one-line trailer to a three-line route's height.
+			Card card = new Card(new StackPanel.StackLayout(6));
 			for (int i = 0; i < Math.min(ROUTES, routes.size()); i++)
 			{
 				Insights.RouteStat r = routes.get(i);
-				JComponent row = twoLine(r.name(), Theme.small(), r.clears + (r.clears == 1 ? " clear" : " clears") + (r.clears >= 3 ? ", typical " + Format.ticks(r.typical) : ""),
-					Format.ticks(r.best), i == 0 ? "fastest" : "+" + Format.span(r.best - routes.get(0).best), i == 0 ? Theme.GOLD_BRIGHT : Theme.TEXT);
+				// The route takes a line of its own: three boss names beside a time clip at sidebar width.
+				JPanel row = new JPanel(new BorderLayout(0, 1));
+				row.setOpaque(false);
+				row.add(Ui.label(r.name(), Theme.body(), Theme.TEXT), BorderLayout.NORTH);
+				row.add(twoLine(r.clears + (r.clears == 1 ? " clear" : " clears"), Theme.small(), r.clears >= 3 ? "typical " + Format.ticks(r.typical) : "",
+					Format.ticks(r.best), i == 0 ? "fastest" : "+" + Format.span(r.best - routes.get(0).best), i == 0 ? Theme.GOLD_BRIGHT : Theme.TEXT), BorderLayout.CENTER);
 				row.setToolTipText("<html>" + r.name() + "<br>Best clear " + Format.ticks(r.best) + (r.clears >= 2 ? ", middle of " + r.clears + " clears " + Format.ticks(r.typical) : "") + "</html>");
 				card.add(row);
 			}
