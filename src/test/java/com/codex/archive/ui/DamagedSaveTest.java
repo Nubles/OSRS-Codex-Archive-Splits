@@ -139,6 +139,27 @@ public class DamagedSaveTest
 	}
 
 	@Test
+	public void aLaterVersionsSaveIsSetAsideNotQuietlyDropped()
+	{
+		String save = GSON.toJson(good(30));
+		assertFalse(Archive.read(GSON, save).damaged);
+		// Each reads without an error, but the next save would drop what this version does not know.
+		String[] later = {
+			save.replaceFirst("^\\{", "{\"version\":2,\"shelf\":{\"a\":[1,{\"b\":2}]},"),
+			save.replaceFirst("\"runs\":\\[\\{", "\"runs\":[{\"mood\":\"glad\","),
+			save.replaceFirst("\"encounter\":\"[A-Z_]+\"", "\"encounter\":\"FIFTH_BOSS\""),
+			save.replaceFirst("\"clears\":\\[", "\"clears\":[4,"),
+		};
+		for (String s : later)
+		{
+			Archive.Loaded read = Archive.read(GSON, s);
+			assertTrue(s.substring(0, 80), read.damaged);
+			assertEquals(30, read.archive.getRuns().size());
+			assertFalse(Archive.read(GSON, GSON.toJson(read.archive)).damaged);
+		}
+	}
+
+	@Test
 	public void figuresBelowZeroOrTooBigAreSetRight()
 	{
 		Archive a = Archive.read(GSON, "{\"kc\":-5,\"dry\":-1,\"clears\":[-4,1,2,3,4],\"wipes\":[0,0,0,0,-2],\"goals\":[-60,0,0,0,0],"

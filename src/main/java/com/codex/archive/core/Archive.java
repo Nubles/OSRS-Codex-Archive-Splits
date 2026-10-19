@@ -367,7 +367,9 @@ public class Archive
 			Archive whole = gson.fromJson(saved, Archive.class);
 			if (whole != null)
 			{
-				return new Loaded(whole.repair(), false);
+				// It read, but a field, a boss or a purple a later version keeps would be dropped by the next save.
+				whole.repair();
+				return new Loaded(whole, Unread.any(gson, saved, whole));
 			}
 		}
 		catch (RuntimeException e)
