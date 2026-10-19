@@ -2,7 +2,7 @@
 
 **Splits, personal bests and purples for the Fractured Archive.** Codex Archive Splits times every trip into the raid, room by room and fight by fight, and compares each one with your best run for the same party size. It also keeps your purples and dry streak, and checks your pack in the lobby, since nothing can be banked once you're inside.
 
-It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https://github.com/Nubles/OSRS-Codex-Navigator), [Codex Guardian](https://github.com/Nubles/OSRS-Codex-Guardian), [Codex Log Insight](https://github.com/Nubles/OSRS-Codex-Log-Insight), [Codex Gear Roadmap](https://github.com/Nubles/OSRS-Codex-Gear-Roadmap), [Codex Session Chronicle](https://github.com/Nubles/OSRS-Codex-Session-Chronicle) and [Codex Ledger](https://github.com/Nubles/OSRS-Codex-Ledger), and shares their look: warm ink, aged gold and the game's own fonts.
+It is part of the **Codex** suite of RuneLite plugins and shares their look: warm ink, aged gold and the game's own fonts.
 
 <p align="center">
   <img src="docs/screenshots/live.png" width="225" alt="A run in progress">
@@ -23,7 +23,7 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
 - **Where runs wipe.** The bosses your runs have wiped at, with how many tries there it took and the share that ended there, so you know which fight to practise. A wipe before either door of a row was seen is left out, since there is no telling which door it was.
 - **Crew and notes.** The raiders you were with are noted on every run, and the Records page lists who you raid with most and your best clear together. Right-click a run to note your role (tank, melee, ranged, magic, support, learner) or write a note on it, which shows on the run and in the export.
 - **Run card.** After a run, press *Save run card* or *Copy run card* on the Run page (or right-click any run on the Records page) for the run on a gilt page made to share: the time large, a ribbon for what it was ("New personal best, 31.2s off", "First trio clear", "Wiped at Xarth"), and the five bosses down a thread with each room's time, the run's time at the fall and the gap to your best there. Every room that was your quickest yet carries a gold mark. Under it: how many golds, deaths, which clear of that party size it was, the crew and the route. A run is always measured against the runs before it, so an old personal best's card still says so. Turn off *Name on cards* to share one without your name or your party's.
-- **Session card.** Under *This session* on the Run page, *Save session card* or *Copy* gives the whole sitting on the same gilt page: the sitting's best clear large, a ribbon for what it brought (a purple, a new best, a first clear, or how close it came to your best), and every run as a bar of its time with its tags, the best lit and each wipe saying where it stopped. Under it: the average clear, clears an hour and the time between runs. *Name on cards* leaves your name off this one too.
+- **Session card.** Under *This session* on the Run page, *Save session card* or *Copy* gives the whole sitting on the same gilt page: the sitting's best clear large, a ribbon for what it brought (a purple, a new best, a first clear, or how close it came to your best), and every run as a bar of its time with its tags, the best lit and each wipe saying where it stopped. A sitting of more than twelve runs shows its latest, always with its best among them. Under it: the average clear, clears an hour and the time between runs; a sitting without a clear says how far it got and how many bosses fell instead. *Name on cards* leaves your name off this one too.
 - **Share and export.** Right-click a run to copy its splits as text for a chat, or save your whole history as a spreadsheet (CSV) with every room and fight in seconds, through RuneLite's own save dialog.
 - **Spoils.** Your dry streak and the longest you've gone, your purples and how often they come, how much of the log you have, a tablet for each unique that lights up once you've got it, and a log of every purple with the KC it came on and how many clears it took.
 - **Pack check.** In the lobby, bars for food, brews, restores and boosts against the amounts you set in the plugin's settings, plus a plaque in the game view naming anything you're short of. Set a supply to 0 to leave it out of the check, or all of them to turn the check off.
@@ -46,13 +46,24 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
   <img src="docs/screenshots/session-card.png" width="360" alt="A session card">
 </p>
 
+## Settings that matter
+
+- **Splits plaque** and **Splits in chat** (both on): the live plaque in the game view during a run, and the chat line as each boss falls.
+- **Compare against** (personal best): what every split is measured against, your best run, your best rooms, your typical run or your goal time.
+- **Name on cards** (on): your name, and your party's on run cards; off, cards can be shared without any names.
+- **Pack check**: **Pack warning** (on) and the food, brew, restore and boost amounts you want in your pack; 0 leaves a supply out.
+
+## With other Codex plugins
+
+Archive Splits works on its own and reads nothing from the other Codex plugins.
+
 ## How it times
 
 Everything is counted in game ticks (0.6 seconds), so every time is exact to the tenth of a second. A run starts when you enter the archive from the lobby and ends when the hooded figure falls. A room's time runs from the previous boss falling to this one falling, walk included. A fight's time runs from the first hit to the fall.
 
 Bosses are recognised by name. Several of them change form during a fight, so a boss only counts as fallen once nothing of its encounter has been standing or hit for a few ticks, and if it comes back after that, its split opens again. The Dagon'hai trio counts as fallen when the last of the three goes down. Two of the archive's bosses are still unnamed, so until they are, the biggest NPC you fight in their row stands in for them, and gives way to the row's named boss if that turns out to be the one you're fighting. The game's completion message always ends a run as a clear.
 
-Purples are picked up by name when a unique arrives in your inventory or equipment during a run, or after a clear until you open a bank. Swapping, dropping or charging one you already have never counts. The completion count comes from the game's own chat message. Everything is saved per account in your RuneLite profile; the newest 500 runs are kept, along with every run that holds one of your records, and clears and wipes are counted for good.
+Purples are picked up by name when a unique arrives in your inventory or equipment during a run, or after a clear until you open a bank. Swapping, dropping or charging one you already have never counts. The completion count comes from the game's own chat message. Everything is saved per account in your RuneLite profile; the newest 500 runs are kept, along with every run that holds one of your records, and clears and wipes are counted for good. If a save is ever damaged (a figure of the wrong kind, a file cut short), every run and purple that still reads is kept rather than the archive starting afresh, and the save as it was is set aside in your profile before anything is written over it.
 
 ## Before launch
 
