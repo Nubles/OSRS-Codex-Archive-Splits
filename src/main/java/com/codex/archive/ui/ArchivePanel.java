@@ -1,19 +1,30 @@
 package com.codex.archive.ui;
 
 import com.codex.archive.core.Archive;
+import com.codex.archive.core.Comparison;
+import com.codex.archive.core.Doubts;
 import com.codex.archive.core.Drop;
 import com.codex.archive.core.Encounter;
+import com.codex.archive.core.Goal;
+import com.codex.archive.core.Insights;
 import com.codex.archive.core.Outcome;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
+import com.codex.archive.core.Sessions;
 import com.codex.archive.core.Spoils;
 import com.codex.archive.core.Split;
+import com.codex.archive.core.Standing;
+import com.codex.archive.core.Stats;
 import com.codex.archive.core.Supply;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridLayout;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
+import java.awt.image.BufferedImage;
+import java.time.ZoneId;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -21,6 +32,9 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.LongConsumer;
 import javax.swing.JComponent;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
@@ -41,6 +55,8 @@ public class ArchivePanel extends PluginPanel
 	private static final String[] TABS = {"run", "records", "spoils"};
 	private static final int HISTORY = 12;
 	private static final int DROPS = 10;
+	private static final int CREW = 6;
+	private static final int SESSIONS = 5;
 
 	private final Crest crest = new Crest();
 	private final Segmented tabs = new Segmented(true, "Run", "Records", "Spoils");
@@ -58,6 +74,20 @@ public class ArchivePanel extends PluginPanel
 	private boolean partyChosen;
 	private LongConsumer onDeleteRun = t -> { };
 	private BiConsumer<Long, String> onDeleteDrop = (t, u) -> { };
+	private BiConsumer<Long, String> onRole = (t, r) -> { };
+	private BiConsumer<Long, String> onNote = (t, n) -> { };
+	private Runnable onExport = () -> { };
+	private BiConsumer<BufferedImage, String> onSaveCard = (card, name) -> { };
+	/** A line under the run card's buttons, such as where it was saved; cleared when the run page moves on. */
+	private String cardNote;
+	/** Whether the note is about the session card, so it shows under that card's buttons. */
+	private boolean noteOnSession;
+	/** Whether run cards carry names, the character's and the party's; off for sharing them without. */
+	private boolean nameOnCard = true;
+	/** The state moved on while the panel was out of sight; the pages are built when it opens. */
+	private boolean stale;
+	private boolean spoilsStale;
+	private BiConsumer<Integer, Integer> onGoal = (b, t) -> { };
 	/** What the run page was last built from; while it holds, a tick only repaints the thread. */
 	private String runKey;
 	/** What the records page was built from, so it is only rebuilt when the history changes. */
@@ -115,6 +145,108 @@ public class ArchivePanel extends PluginPanel
 		onDeleteDrop = drop;
 	}
 
+	/** What the panel asks of the plugin when the player notes a role or a note on a run. */
+	public void onNotes(BiConsumer<Long, String> role, BiConsumer<Long, String> note)
+	{
+		onRole = role;
+		onNote = note;
+	}
+
+	/** What the panel asks of the plugin to save the history as a spreadsheet. */
+	/** Called with a party-size group and its new goal in ticks, 0 to clear it. */
+	public void onGoal(BiConsumer<Integer, Integer> goal)
+	{
+		onGoal = goal;
+	}
+
+	public void onExport(Runnable export)
+	{
+		onExport = export;
+	}
+
+	/** What the panel asks of the plugin to save a run card: the picture and the file name to offer. */
+	public void onSaveCard(BiConsumer<BufferedImage, String> save)
+	{
+		onSaveCard = save;
+	}
+
+	/** Whether run cards carry names, the character's and the party's; called on the Swing thread. */
+	public void setNameOnCard(boolean nameOnCard)
+	{
+		this.nameOnCard = nameOnCard;
+	}
+
+	/** A line under the run card's buttons, such as where it was saved. */
+	public void cardNote(String note)
+	{
+		cardNote = note;
+		runKey = null;
+		rebuildRun();
+	}
+
+	/** The session card of a sitting, each run measured against the runs before it. */
+	BufferedImage sessionCard(Sessions.Session t)
+	{
+		return SessionCard.render(t, runs(), nameOnCard ? view.player : null, ZoneId.systemDefault());
+	}
+
+	private void saveSessionCard(Sessions.Session t)
+	{
+		noteOnSession = true;
+		onSaveCard.accept(sessionCard(t), "Fractured Archive session " + Format.fileDay(t.getStart()));
+	}
+
+	private void copySessionCard(Sessions.Session t)
+	{
+		noteOnSession = true;
+		String note;
+		try
+		{
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new ImageTransfer(sessionCard(t)), null);
+			note = "Session card copied. Paste it anywhere you share pictures.";
+		}
+		catch (IllegalStateException e)
+		{
+			note = "The clipboard is busy, try again in a moment.";
+		}
+		cardNote(note);
+	}
+
+	/** The run card of a run, measured against the runs of its party size before it. */
+	BufferedImage runCard(Run r)
+	{
+		return RunCard.render(Standing.of(runs(), r), view.player, nameOnCard, ZoneId.systemDefault());
+	}
+
+	private void saveCard(Run r)
+	{
+		noteOnSession = false;
+		onSaveCard.accept(runCard(r), "Fractured Archive " + Records.BUCKETS[Records.bucket(r.getTeamSize())].toLowerCase()
+			+ " " + Format.fileDay(r.getStartedAt()));
+	}
+
+	private void copyCard(Run r)
+	{
+		noteOnSession = false;
+		String note;
+		try
+		{
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new ImageTransfer(runCard(r)), null);
+			note = "Run card copied. Paste it anywhere you share pictures.";
+		}
+		catch (IllegalStateException e)
+		{
+			note = "The clipboard is busy, try again in a moment.";
+		}
+		cardNote(note);
+	}
+
+	/** The copy of the account's archive the panel shows, read on the Swing thread; or null. */
+	public Archive archive()
+	{
+		return view.archive;
+	}
+
 	/** Called on the Swing thread with each new moment of the plugin's state. */
 	public void update(View view)
 	{
@@ -124,12 +256,35 @@ public class ArchivePanel extends PluginPanel
 		{
 			party.setSelected(view.live != null ? Records.bucket(view.live.getTeamSize()) : Records.favouriteBucket(view.archive.getRuns()), false);
 		}
+		spoilsStale |= historyChanged;
+		// Building the pages costs real time; while the panel is out of sight it waits until it is opened.
+		if (!isShowing())
+		{
+			stale = true;
+			return;
+		}
+		refresh();
+	}
+
+	@Override
+	public void onActivate()
+	{
+		if (stale)
+		{
+			refresh();
+		}
+	}
+
+	private void refresh()
+	{
+		stale = false;
 		updateCrest();
 		rebuildRun();
 		// Also catches the party size moving to the live run's, which changes what the page holds.
 		rebuildRecords(false);
-		if (historyChanged)
+		if (spoilsStale)
 		{
+			spoilsStale = false;
 			rebuildSpoils();
 		}
 	}
@@ -164,7 +319,7 @@ public class ArchivePanel extends PluginPanel
 
 	private void updateCrest()
 	{
-		String heading = view.player != null ? view.player + "  -  ARCHIVE" : "FRACTURED ARCHIVE";
+		String heading = view.player != null ? view.player + "  \u00b7  ARCHIVE" : "FRACTURED ARCHIVE";
 		if (view.archive == null)
 		{
 			crest.update(heading, "", null, false, "Log in to open the archive", null, null, null);
@@ -175,14 +330,15 @@ public class ArchivePanel extends PluginPanel
 		if (live != null)
 		{
 			int bucket = Records.bucket(live.getTeamSize());
-			Run best = view.liveBest;
 			int row = live.reached();
 			Split split = row < Encounter.ROWS ? live.split(row) : null;
-			Integer delta = row > 0 ? Records.delta(live, best, row - 1) : null;
+			Comparison cmp = view.comparison;
+			Integer delta = row > 0 && cmp != null ? cmp.delta(live, lastTimed(live, row - 1)) : null;
 			String room = split == null ? (row >= Encounter.ROWS ? "Cleared" : "Walking") : split.getEncounter().getShortName();
+			int possible = Comparison.bestPossible(live, view.bestRooms, live.getTicks());
 			crest.update(heading, Format.clock(live.getTicks()), Records.BUCKETS[bucket].toLowerCase(), true, null,
-				new String[]{"Room", "On best", "Best"},
-				new String[]{room, delta == null ? "-" : Format.delta(delta), best == null ? "-" : Format.clock(best.getTicks())},
+				new String[]{"Room", view.measuredAgainst().getShortLabel(), "Can hit"},
+				new String[]{room, delta == null ? "-" : Format.delta(delta), possible < 0 ? "-" : Format.clock(possible)},
 				new Color[]{Theme.mix(Theme.TEAL, Theme.TEXT, 0.4), delta == null ? Theme.TEXT_FAINT : Theme.delta(delta), Theme.GOLD});
 			return;
 		}
@@ -205,6 +361,11 @@ public class ArchivePanel extends PluginPanel
 			// Mid-run the page keeps its shape; only the thread, the clocks and the bars move.
 			refreshLive();
 			return;
+		}
+		if (runKey != null && !key.equals(runKey))
+		{
+			// A note on where the last card went belongs to that page, not the next run's.
+			cardNote = null;
 		}
 		runKey = key;
 		StackPanel stack = new StackPanel(Theme.GUTTER, Theme.GUTTER);
@@ -233,32 +394,56 @@ public class ArchivePanel extends PluginPanel
 		}
 		boolean live = view.live != null;
 		int bucket = Records.bucket(run.getTeamSize());
-		Run best = Records.best(runs(), bucket);
-		if (!live && best == run)
-		{
-			// Against itself every delta is nothing; show the best before it instead, if there is one.
-			best = bestExcept(runs(), bucket, run);
-		}
-		String trailing = live ? "live, " + Records.BUCKETS[bucket].toLowerCase()
-			: Format.ago(view.now - run.getStartedAt());
+		// Against itself every delta is nothing; a finished run is measured against the runs before it.
+		Run best = bestExcept(runs(), bucket, run);
+		Comparison against = live ? view.comparison : Comparison.of(view.archive, bucket, view.compare, run);
+		String trailing = (live ? "live, " + Records.BUCKETS[bucket].toLowerCase() : Format.ago(view.now - run.getStartedAt()))
+			+ ", vs " + (against == null ? view.compare : against.getMode()).getShortLabel();
 		stack.add(new SectionHeader(live ? "This run" : "Last run", trailing));
-		int[] bestRooms = new int[Encounter.ROWS];
-		for (int row = 0; row < Encounter.ROWS; row++)
+		if (live)
 		{
-			bestRooms[row] = Records.bestRoom(runs(), bucket, row);
+			table.update(run, view.comparison, view.bestRooms, run.getTicks(), true);
 		}
-		table.update(run, best, bestRooms, run.getTicks(), live);
+		else
+		{
+			table.update(run, against, View.bestRooms(view.archive, run), run.getTicks(), false);
+		}
 		stack.add(table);
 
 		if (!live)
 		{
 			stack.add(summary(run, best));
+			String route = routeLine(run, bucket);
+			if (route != null)
+			{
+				stack.add(Ui.wrapped(route, Theme.small(), Theme.TEXT_MUTED, WIDTH - 16));
+			}
+			List<String> doubts = Doubts.of(run);
+			if (!doubts.isEmpty())
+			{
+				stack.add(doubts(doubts));
+			}
+			// The run as a picture to share: what a clear is for, after the clear itself.
+			JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 6, 0));
+			buttons.setOpaque(false);
+			buttons.add(new CodexButton("Save run card", true, () -> saveCard(run)));
+			buttons.add(new CodexButton("Copy run card", false, () -> copyCard(run)));
+			stack.add(buttons);
+			if (cardNote != null && !noteOnSession)
+			{
+				stack.add(Ui.wrapped(cardNote, Theme.small(), Theme.TEAL, WIDTH - 16));
+			}
 		}
 		Map<Supply, Integer> used = used(run);
 		if (!used.isEmpty())
 		{
 			usedCard.update(used, null);
 			stack.add(usedCard);
+		}
+		Sessions.Session session = live ? null : Sessions.current(runs(), view.now);
+		if (session != null && session.getRuns().size() > 1)
+		{
+			session(stack, session);
 		}
 		setPage(runPage, stack);
 	}
@@ -267,7 +452,7 @@ public class ArchivePanel extends PluginPanel
 	private String runKey()
 	{
 		Run run = view.live != null ? view.live : view.archive == null ? null : view.archive.last();
-		return System.identityHashCode(view.archive) + "|" + (view.live != null) + "|" + view.inLobby + "|" + view.checksPack()
+		return System.identityHashCode(view.archive) + "|" + view.compare + "|" + (view.live != null) + "|" + view.inLobby + "|" + view.checksPack()
 			+ "|" + (run == null ? "" : run.getStartedAt() + ":" + run.getTeamSize() + ":" + used(run).isEmpty())
 			+ "|" + (view.live == null ? view.now / 60_000 : 0);
 	}
@@ -276,14 +461,7 @@ public class ArchivePanel extends PluginPanel
 	private void refreshLive()
 	{
 		Run run = view.live;
-		int bucket = Records.bucket(run.getTeamSize());
-		Run best = view.liveBest;
-		int[] bestRooms = new int[Encounter.ROWS];
-		for (int row = 0; row < Encounter.ROWS; row++)
-		{
-			bestRooms[row] = Records.bestRoom(runs(), bucket, row);
-		}
-		table.update(run, best, bestRooms, run.getTicks(), true);
+		table.update(run, view.comparison, view.bestRooms, run.getTicks(), true);
 		Map<Supply, Integer> used = used(run);
 		if (!used.isEmpty())
 		{
@@ -306,6 +484,20 @@ public class ArchivePanel extends PluginPanel
 			}
 		}
 		return used;
+	}
+
+	/** The furthest row at or before this one whose boss has a time, so a missed row still leaves a delta. */
+	private static int lastTimed(Run run, int row)
+	{
+		for (int r = row; r >= 0; r--)
+		{
+			Split s = run.split(r);
+			if (s != null && s.isDone())
+			{
+				return r;
+			}
+		}
+		return row;
 	}
 
 	private static Run bestExcept(List<Run> runs, int bucket, Run except)
@@ -350,6 +542,34 @@ public class ArchivePanel extends PluginPanel
 		return grid;
 	}
 
+	/** How a clear stands on its own route of doors, or null when that cannot be said. */
+	private String routeLine(Run run, int bucket)
+	{
+		List<Encounter> doors = Insights.doors(run);
+		if (!run.isCompleted() || doors == null)
+		{
+			return null;
+		}
+		int[] before = Insights.routeBest(runs(), bucket, run);
+		String name = doors.get(0).getShortName() + ", " + doors.get(1).getShortName() + ", " + doors.get(2).getShortName();
+		if (before[0] < 0)
+		{
+			return "First clear through " + name + ".";
+		}
+		int d = run.getTicks() - before[0];
+		if (d == 0)
+		{
+			return "Level with your best through " + name + ".";
+		}
+		return d < 0 ? "Fastest yet through " + name + ", " + Format.span(-d) + " under the " + before[1] + (before[1] == 1 ? " clear" : " clears") + " before."
+			: Format.span(d) + " behind your best through " + name + " (" + Format.ticks(before[0]) + ").";
+	}
+
+	/** Newest personal bests listed, routes listed, and bosses listed under where runs wipe. */
+	private static final int LADDER = 5;
+	private static final int ROUTES = 4;
+	private static final int WALLS = 3;
+
 	private void rebuildRecords(boolean force)
 	{
 		int bucket = party.getSelected();
@@ -392,30 +612,129 @@ public class ArchivePanel extends PluginPanel
 		int allWipes = view.archive.wipes(bucket);
 		grid.add(new StatTile(Format.count(allClears), "Clears", allWipes == 0 ? "no wipes" : Format.count(allWipes) + (allWipes == 1 ? " wipe" : " wipes"), Theme.TEXT));
 		stack.add(grid);
+		goal(stack, runs, bucket);
 
-		stack.add(new SectionHeader("Best rooms", "walk in included"));
-		Card rooms = new Card(new GridLayout(0, 1, 0, 2));
-		for (int row = 0; row < Encounter.ROWS; row++)
+		// A party size with nothing timed yet has no rooms or fights to list, only rows of dashes.
+		boolean timed = false;
+		for (Run r : runs)
 		{
-			int t = Records.bestRoom(runs, bucket, row);
-			rooms.add(line(Encounter.rowLabel(row), t < 0 ? "-" : Format.ticks(t), t < 0 ? Theme.TEXT_FAINT : Theme.TEXT));
+			timed |= Records.bucket(r.getTeamSize()) == bucket && r.reached() > 0;
 		}
-		stack.add(rooms);
+		if (timed)
+		{
+			stack.add(new SectionHeader("Best rooms", "and a typical one"));
+			stack.add(rooms(runs, bucket));
 
-		stack.add(new SectionHeader("Best fights", "first hit to fall"));
-		Card fights = new Card(new GridLayout(0, 1, 0, 2));
-		for (Encounter e : Encounter.values())
-		{
-			int t = Records.bestFight(runs, bucket, e);
-			fights.add(line(e.getTitle(), t < 0 ? "-" : Format.ticks(t), t < 0 ? Theme.TEXT_FAINT : Theme.TEXT));
+			stack.add(new SectionHeader("Best fights", "first hit to fall"));
+			Card fights = new Card(new GridLayout(0, 1, 0, 2));
+			for (Encounter e : Encounter.values())
+			{
+				int t = Records.bestFight(runs, bucket, e);
+				fights.add(line(e.getTitle(), t < 0 ? "-" : Format.ticks(t), t < 0 ? Theme.TEXT_FAINT : Theme.TEXT));
+			}
+			stack.add(fights);
 		}
-		stack.add(fights);
+
+		List<Integer> trend = Insights.trend(runs, bucket);
+		if (trend.size() >= 3)
+		{
+			stack.add(new SectionHeader("Steadiness", "last " + trend.size() + " clears"));
+			stack.add(new TrendChart(trend, best == null ? -1 : best.getTicks(), Stats.median(trend)));
+			JPanel steady = new JPanel(new GridLayout(1, 3, 6, 0));
+			steady.setOpaque(false);
+			int spread = Stats.deviation(trend);
+			steady.add(new StatTile("±" + Format.span(spread), "Spread", "typical", Theme.TEXT));
+			int pbs = Insights.personalBests(runs, bucket);
+			steady.add(new StatTile(String.valueOf(pbs), "Bests", pbs == 1 ? "set once" : "times set", Theme.GOLD));
+			int attempts = allClears + allWipes;
+			// Rounded down once there is a wipe, so 199 clears and a wipe never read as 100%.
+			long rate = attempts == 0 ? 0 : allWipes > 0 ? 100L * allClears / attempts : 100;
+			steady.add(new StatTile(attempts == 0 ? "-" : rate + "%", "Clears", "of tries",
+				allWipes == 0 ? Theme.GREEN : Theme.TEXT));
+			stack.add(steady);
+		}
+
+		List<Insights.Best> ladder = Insights.ladder(runs, bucket);
+		if (ladder.size() >= 2)
+		{
+			Insights.Best first = ladder.get(0);
+			Insights.Best last = ladder.get(ladder.size() - 1);
+			stack.add(new SectionHeader("Your best, over time", Format.span(first.ticks - last.ticks) + " off"));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = ladder.size() - 1; i >= Math.max(0, ladder.size() - LADDER); i--)
+			{
+				Insights.Best b = ladder.get(i);
+				card.add(twoLine(Format.day(b.at), b.saved < 0 ? "first clear" : Format.span(b.saved) + " off the one before",
+					Format.ticks(b.ticks), i == ladder.size() - 1 ? "best now" : "", i == ladder.size() - 1 ? Theme.GOLD_BRIGHT : Theme.TEXT));
+			}
+			if (ladder.size() > LADDER)
+			{
+				card.add(Ui.label((ladder.size() - LADDER) + " more before, from " + Format.ticks(first.ticks),
+					Theme.small(), Theme.TEXT_FAINT));
+			}
+			stack.add(card);
+		}
+
+		List<Insights.DoorStat[]> doors = Insights.doors(runs, bucket);
+		if (!doors.isEmpty())
+		{
+			stack.add(new SectionHeader("Doors", "typical room"));
+			Card card = new Card(new GridLayout(0, 1, 0, 8));
+			for (Insights.DoorStat[] pair : doors)
+			{
+				card.add(doorLine(pair));
+			}
+			stack.add(card);
+		}
+
+		List<Insights.RouteStat> routes = Insights.routes(runs, bucket);
+		if (routes.size() >= 2)
+		{
+			stack.add(new SectionHeader("Routes", "best clear"));
+			// Stacked, not a grid: a grid would stretch the one-line trailer to a three-line route's height.
+			Card card = new Card(new StackPanel.StackLayout(6));
+			for (int i = 0; i < Math.min(ROUTES, routes.size()); i++)
+			{
+				Insights.RouteStat r = routes.get(i);
+				// The route takes a line of its own: three boss names beside a time clip at sidebar width.
+				JPanel row = new JPanel(new BorderLayout(0, 1));
+				row.setOpaque(false);
+				row.add(Ui.label(r.name(), Theme.body(), Theme.TEXT), BorderLayout.NORTH);
+				row.add(twoLine(r.clears + (r.clears == 1 ? " clear" : " clears"), Theme.small(), r.clears >= 3 ? "typical " + Format.ticks(r.typical) : "",
+					Format.ticks(r.best), i == 0 ? "fastest" : "+" + Format.span(r.best - routes.get(0).best), i == 0 ? Theme.GOLD_BRIGHT : Theme.TEXT), BorderLayout.CENTER);
+				row.setToolTipText("<html>" + r.name() + "<br>Best clear " + Format.ticks(r.best) + (r.clears >= 2 ? ", middle of " + r.clears + " clears " + Format.ticks(r.typical) : "") + "</html>");
+				card.add(row);
+			}
+			if (routes.size() > ROUTES)
+			{
+				card.add(Ui.label("and " + (routes.size() - ROUTES) + " slower " + (routes.size() - ROUTES == 1 ? "route" : "routes"), Theme.small(), Theme.TEXT_FAINT));
+			}
+			stack.add(card);
+		}
+
+		List<Insights.Wall> walls = Insights.walls(runs, bucket);
+		if (!walls.isEmpty())
+		{
+			stack.add(new SectionHeader("Where runs wipe", null));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = 0; i < Math.min(WALLS, walls.size()); i++)
+			{
+				Insights.Wall w = walls.get(i);
+				long share = w.tries == 0 ? 0 : Math.round(100.0 * w.wipes / w.tries);
+				card.add(twoLine(w.encounter.getTitle(), w.wipes + (w.wipes == 1 ? " wipe" : " wipes") + " in " + w.tries + (w.tries == 1 ? " try" : " tries"),
+					share + "%", "of tries", i == 0 ? Theme.BEHIND : Theme.TEXT));
+			}
+			stack.add(card);
+		}
 
 		int inBucket = done + wiped + left;
-		String party = Records.BUCKETS[bucket].toLowerCase();
+		String party = Format.party(Records.BUCKETS[bucket]);
 		stack.add(new SectionHeader("Recent " + party + " runs", inBucket > HISTORY ? "latest " + HISTORY : null));
-		Card history = new Card(new GridLayout(0, 1, 0, 0));
+		// Each row keeps its own height: a run whose route takes two lines must not stretch the rest.
+		Card history = new Card(new BorderLayout());
 		history.setBorder(new EmptyBorder(2, 4, 2, 4));
+		StackPanel historyRows = new StackPanel(0, 0);
+		history.add(historyRows, BorderLayout.CENTER);
 		int shown = 0;
 		for (int i = runs.size() - 1; i >= 0 && shown < HISTORY; i--)
 		{
@@ -425,23 +744,63 @@ public class ArchivePanel extends PluginPanel
 				continue;
 			}
 			RunRow row = new RunRow(r, r == best, best == null ? -1 : best.getTicks(), view.now);
-			row.setComponentPopupMenu(menu("Delete this run",
-				"Delete the " + describe(r) + " from " + Format.day(r.getStartedAt()) + " at " + Format.time(r.getStartedAt())
-					+ "? Its times leave your records for good.",
-				() -> onDeleteRun.accept(r.getStartedAt())));
-			history.add(row);
+			row.setComponentPopupMenu(runMenu(r, bucket));
+			historyRows.add(row);
 			shown++;
 		}
 		if (shown == 0)
 		{
 			history.setBorder(new EmptyBorder(8, 10, 8, 10));
-			history.add(Ui.wrapped(runs.isEmpty() ? "Your runs appear here as you finish them."
+			historyRows.add(Ui.wrapped(runs.isEmpty() ? "Your runs appear here as you finish them."
 				: "No " + party + " runs yet. Pick another party size above.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 24));
 		}
 		stack.add(history);
 		if (shown > 0)
 		{
-			stack.add(Ui.wrapped("Right-click a run the plugin timed wrongly to delete it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+			stack.add(Ui.wrapped("Right-click a run to note your role, write a note, copy its splits or delete one the plugin timed wrongly.",
+				Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
+
+		// Only this party size's runs count, and a sitting without one is not listed here.
+		List<Sessions.Session> sittings = Sessions.of(runs, bucket);
+		if (sittings.size() > 1)
+		{
+			stack.add(new SectionHeader("Sessions", sittings.size() > SESSIONS ? "latest " + SESSIONS : null));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = sittings.size() - 1; i >= Math.max(0, sittings.size() - SESSIONS); i--)
+			{
+				Sessions.Session t = sittings.get(i);
+				String pace = t.perHour() > 0 ? String.format(java.util.Locale.ENGLISH, ", %.1f an hour", t.perHour()) : "";
+				// "Best of 1" says nothing a lone run's time does not; the line is left empty then.
+				String sub = t.getBest() < 0 ? "no clear" : t.getBests() == 1 ? "new best" : t.getBests() > 1 ? t.getBests() + " new bests"
+					: t.getClears() > 1 ? "best of " + t.getClears() : "";
+				card.add(twoLine(Format.day(t.getStart()), t.getCounted().size() + (t.getCounted().size() == 1 ? " run" : " runs") + pace,
+					t.getBest() < 0 ? "-" : Format.ticks(t.getBest()), sub,
+					t.getBests() > 0 ? Theme.GOLD_BRIGHT : Theme.TEXT));
+			}
+			stack.add(card);
+		}
+
+		List<Insights.Mate> crew = Insights.crew(runs, bucket);
+		if (!crew.isEmpty())
+		{
+			stack.add(new SectionHeader("Crew", crew.size() > CREW ? "top " + CREW : null));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = 0; i < Math.min(CREW, crew.size()); i++)
+			{
+				Insights.Mate m = crew.get(i);
+				card.add(twoLine(m.name, m.runs + (m.runs == 1 ? " run" : " runs") + ", " + m.clears + (m.clears == 1 ? " clear" : " clears"),
+					m.best < 0 ? "-" : Format.ticks(m.best), m.best < 0 ? "no clear" : "best together", Theme.TEXT));
+			}
+			stack.add(card);
+		}
+
+		if (!runs.isEmpty())
+		{
+			JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
+			buttons.setOpaque(false);
+			buttons.add(new CodexButton("Save runs as a spreadsheet", false, onExport));
+			stack.add(buttons);
 		}
 		setPage(recordsPage, stack);
 	}
@@ -495,9 +854,10 @@ public class ArchivePanel extends PluginPanel
 		for (int i = drops.size() - 1; i >= 0 && i >= drops.size() - DROPS; i--)
 		{
 			Drop d = drops.get(i);
-			String when = (d.getKc() > 0 ? "KC " + Format.count(d.getKc()) + ", " : "") + Format.shortDay(d.getAt());
+			// The unique's name gets the whole width; how long it took joins the line beneath it.
 			String after = d.getDry() <= 1 ? "first clear" : "after " + d.getDry() + " clears";
-			JComponent line = dropLine(d.getUnique(), when, after);
+			String when = (d.getKc() > 0 ? "KC " + Format.count(d.getKc()) + " \u00b7 " : "") + Format.shortDay(d.getAt()) + " \u00b7 " + after;
+			JComponent line = dropLine(d.getUnique(), when);
 			line.setComponentPopupMenu(menu("Remove this purple",
 				"Remove the " + d.getUnique() + " from " + Format.day(d.getAt()) + "? Only do this if it never dropped; the clears it took go back onto your dry streak.",
 				() -> onDeleteDrop.accept(d.getAt(), d.getUnique())));
@@ -516,6 +876,260 @@ public class ArchivePanel extends PluginPanel
 		setPage(spoilsPage, stack);
 	}
 
+	/** The sitting the last run belongs to: clears, pace, average, time between runs, and any best or purple. */
+	private void session(StackPanel stack, Sessions.Session t)
+	{
+		stack.add(new SectionHeader("This session", "since " + Format.time(t.getStart())));
+		JPanel grid = new JPanel(new GridLayout(2, 2, 6, 6));
+		grid.setOpaque(false);
+		grid.add(new StatTile(String.valueOf(t.getClears()), "Clears", t.getWipes() == 0 ? "no wipes" : t.getWipes() + (t.getWipes() == 1 ? " wipe" : " wipes"),
+			Theme.TEXT));
+		grid.add(new StatTile(t.perHour() > 0 ? String.format(java.util.Locale.ENGLISH, "%.1f", t.perHour()) : "-", "An hour", "clears", Theme.TEAL));
+		grid.add(new StatTile(t.getAverage() < 0 ? "-" : Format.ticks(t.getAverage()), "Average",
+			t.getBest() < 0 ? "no clear yet" : "best " + Format.ticks(t.getBest()), Theme.TEXT));
+		grid.add(new StatTile(t.getBetween() < 0 ? "-" : Format.clock((int) (t.getBetween() / 600)), "Downtime", "between runs", Theme.TEXT));
+		stack.add(grid);
+		java.util.List<String> parts = new java.util.ArrayList<>();
+		if (t.getBests() > 0)
+		{
+			parts.add(t.getBests() == 1 ? "a new personal best" : t.getBests() + " new personal bests");
+		}
+		if (t.getPurples() > 0)
+		{
+			parts.add(t.getPurples() == 1 ? "a purple" : t.getPurples() + " purples");
+		}
+		if (!parts.isEmpty())
+		{
+			stack.add(Ui.wrapped("This session: " + String.join(" and ", parts) + ".", Theme.small(),
+				t.getPurples() > 0 ? Theme.PURPLE : Theme.GOLD, WIDTH - 16));
+		}
+		// The whole sitting as a picture, with every run of it.
+		JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 6, 0));
+		buttons.setOpaque(false);
+		buttons.add(new CodexButton("Save session card", true, () -> saveSessionCard(t)));
+		buttons.add(new CodexButton("Copy", false, () -> copySessionCard(t)));
+		stack.add(buttons);
+		if (cardNote != null && noteOnSession)
+		{
+			stack.add(Ui.wrapped(cardNote, Theme.small(), Theme.TEAL, WIDTH - 16));
+		}
+	}
+
+	/**
+	 * The goal for a party size: how far the best is from it, how often it has been beaten, and the
+	 * rooms where a typical run loses most against the goal's share. With none set, a way to set one.
+	 */
+	private void goal(StackPanel stack, List<Run> runs, int bucket)
+	{
+		int ticks = view.archive.goal(bucket);
+		Goal g = Goal.of(runs, bucket, ticks);
+		String party = Format.party(Records.BUCKETS[bucket]);
+		JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
+		buttons.setOpaque(false);
+		buttons.add(new CodexButton(g == null ? "Set a goal time" : "Change goal", g == null, () -> askGoal(bucket, ticks)));
+		if (g == null)
+		{
+			Card card = new Card(new BorderLayout(0, 6));
+			card.add(Ui.wrapped("Set the time you are working towards for " + party + " runs, and see how far off it is and which rooms hold you back. "
+				+ "Choose Goal time under Compare against in the settings to race it room by room.", Theme.small(), Theme.TEXT_MUTED, WIDTH - 30),
+				BorderLayout.CENTER);
+			card.add(buttons, BorderLayout.SOUTH);
+			stack.add(card);
+			return;
+		}
+		buttons.add(new CodexButton("Clear", false, () -> onGoal.accept(bucket, 0)));
+		stack.add(new SectionHeader("Goal", Format.clock(g.getGoal()) + " " + party));
+		Card card = new Card(new BorderLayout(0, 6));
+		card.accent(g.getBeaten() > 0 ? Theme.GREEN : Theme.GOLD);
+		JPanel lines = new JPanel(new GridLayout(0, 1, 0, 3));
+		lines.setOpaque(false);
+		if (g.getBest() < 0)
+		{
+			lines.add(line("Your best", "no clear yet", Theme.TEXT_FAINT));
+		}
+		else if (g.gap() > 0)
+		{
+			lines.add(line("Your best", Format.ticks(g.getBest()), Theme.TEXT));
+			lines.add(line("Still to find", Format.span(g.gap()), Theme.EMBER));
+		}
+		else
+		{
+			lines.add(line("Your best", Format.ticks(g.getBest()), Theme.GREEN));
+			lines.add(line("Beaten", g.getBeaten() + (g.getBeaten() == 1 ? " time" : " times"), Theme.GREEN));
+			if (g.getFirst() != null)
+			{
+				lines.add(line("First on", Format.shortDay(g.getFirst().getStartedAt()), Theme.TEXT));
+			}
+		}
+		int shown = 0;
+		for (Goal.Row r : g.getRows())
+		{
+			if (r.over() <= 0 || shown >= 3)
+			{
+				continue;
+			}
+			if (shown++ == 0)
+			{
+				lines.add(Ui.label("Where a typical run loses it", Theme.small(), Theme.GOLD_DIM));
+			}
+			JComponent l = line(Encounter.rowLabel(r.row), "+" + Format.span(r.over()), Theme.EMBER);
+			l.setToolTipText("A typical room here takes " + Format.ticks(r.typical) + "; the goal allows " + Format.ticks(r.allowed) + ".");
+			lines.add(l);
+		}
+		card.add(lines, BorderLayout.CENTER);
+		card.add(buttons, BorderLayout.SOUTH);
+		stack.add(card);
+	}
+
+	/** Asks for a goal time, and passes on what was typed once it reads as a time. */
+	private void askGoal(int bucket, int current)
+	{
+		String party = Format.party(Records.BUCKETS[bucket]);
+		Object answer = JOptionPane.showInputDialog(this, "Goal time for " + party + " runs, in minutes and seconds (for example 20:00):",
+			"Goal time", JOptionPane.PLAIN_MESSAGE, null, null, current > 0 ? Format.clock(current) : "");
+		if (answer == null)
+		{
+			return;
+		}
+		int ticks = Goal.parse(answer.toString());
+		if (ticks <= 0)
+		{
+			JOptionPane.showMessageDialog(this, "\"" + answer + "\" is not a time. Write it like 20:00 or 19:42.6.", "Goal time",
+				JOptionPane.WARNING_MESSAGE);
+			return;
+		}
+		onGoal.accept(bucket, ticks);
+	}
+
+	/** Each row's best room with a bar for what a typical run lately gives away, the worst row lit. */
+	private static JComponent rooms(List<Run> runs, int bucket)
+	{
+		Map<Integer, Insights.RowStat> stats = new HashMap<>();
+		int scale = 0;
+		int worst = -1;
+		for (Insights.RowStat r : Insights.rows(runs, bucket))
+		{
+			stats.put(r.row, r);
+			if (r.loss() > scale)
+			{
+				scale = r.loss();
+				worst = r.row;
+			}
+		}
+		Card card = new Card(new BorderLayout());
+		JPanel lines = new JPanel();
+		lines.setOpaque(false);
+		lines.setLayout(new javax.swing.BoxLayout(lines, javax.swing.BoxLayout.Y_AXIS));
+		for (int row = 0; row < Encounter.ROWS; row++)
+		{
+			Insights.RowStat stat = stats.get(row);
+			if (row > 0)
+			{
+				lines.add(javax.swing.Box.createVerticalStrut(5));
+			}
+			lines.add(new RoomLine(Encounter.rowLabel(row), Records.bestRoom(runs, bucket, row), stat == null ? -1 : stat.typical,
+				scale, row == worst && scale > 0));
+		}
+		card.add(lines, BorderLayout.CENTER);
+		return card;
+	}
+
+	/** Both doors of a row, one line each with its typical room, and which is quicker for you. */
+	private static JComponent doorLine(Insights.DoorStat[] pair)
+	{
+		Insights.DoorStat a = pair[0];
+		Insights.DoorStat b = pair[1];
+		int gap = a.typical - b.typical;
+		Insights.DoorStat quick = gap > 0 ? b : a;
+		JPanel block = new JPanel(new GridLayout(0, 1, 0, 1));
+		block.setOpaque(false);
+		for (Insights.DoorStat d : pair)
+		{
+			JPanel line = new JPanel(new BorderLayout(6, 0));
+			line.setOpaque(false);
+			line.add(Ui.label(d.encounter.getTitle(), Theme.small(), Theme.TEXT_MUTED), BorderLayout.CENTER);
+			JLabel time = Ui.label(d.runs + "x  " + Format.ticks(d.typical), Theme.small(),
+				d == quick && gap != 0 ? Theme.GREEN : Theme.TEXT);
+			line.add(time, BorderLayout.EAST);
+			block.add(line);
+		}
+		block.add(Ui.label(gap == 0 ? "Level either way" : quick.encounter.getShortName() + " is " + Format.span(gap) + " quicker for you",
+			Theme.small(), gap == 0 ? Theme.TEXT_FAINT : Theme.GOLD));
+		block.setToolTipText("Typical room through each door in this party size, from " + a.runs + " and " + b.runs + " runs.");
+		return block;
+	}
+
+	private static JComponent twoLine(String title, String sub, String value, String valueSub, Color color)
+	{
+		return twoLine(title, Theme.body(), sub, value, valueSub, color);
+	}
+
+	private static JComponent twoLine(String title, java.awt.Font titleFont, String sub, String value, String valueSub, Color color)
+	{
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setOpaque(false);
+		JPanel left = new JPanel(new GridLayout(2, 1));
+		left.setOpaque(false);
+		left.add(Ui.label(title, titleFont, Theme.TEXT));
+		left.add(Ui.label(sub, Theme.small(), Theme.TEXT_FAINT));
+		row.add(left, BorderLayout.CENTER);
+		JPanel right = new JPanel(new GridLayout(2, 1));
+		right.setOpaque(false);
+		JLabel v = Ui.label(value, Theme.body(), color);
+		v.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		JLabel vs = Ui.label(valueSub, Theme.small(), Theme.TEXT_FAINT);
+		vs.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		right.add(v);
+		right.add(vs);
+		row.add(right, BorderLayout.EAST);
+		return row;
+	}
+
+	/** Everything a run can have done to it: a role, a note, its splits to share, or deleting it. */
+	private JPopupMenu runMenu(Run r, int bucket)
+	{
+		JPopupMenu popup = new JPopupMenu();
+		JMenu role = new JMenu("Role");
+		for (String name : Run.ROLES)
+		{
+			JCheckBoxMenuItem item = new JCheckBoxMenuItem(name, name.equals(r.getRole()));
+			item.addActionListener(e -> onRole.accept(r.getStartedAt(), name.equals(r.getRole()) ? null : name));
+			role.add(item);
+		}
+		popup.add(role);
+		JMenuItem note = new JMenuItem(r.getNote() == null ? "Write a note..." : "Edit the note...");
+		note.addActionListener(e ->
+		{
+			Object answer = JOptionPane.showInputDialog(this, "A note on this run, up to " + Run.NOTE_LENGTH + " characters:",
+				"Note", JOptionPane.PLAIN_MESSAGE, null, null, r.getNote() == null ? "" : r.getNote());
+			if (answer != null)
+			{
+				onNote.accept(r.getStartedAt(), answer.toString());
+			}
+		});
+		popup.add(note);
+		JMenuItem copy = new JMenuItem("Copy splits");
+		copy.addActionListener(e ->
+		{
+			Comparison pb = Comparison.of(runs(), bucket, Comparison.Mode.PERSONAL_BEST, r);
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(Share.splits(r, pb)), null);
+		});
+		popup.add(copy);
+		JMenuItem save = new JMenuItem("Save run card...");
+		save.addActionListener(e -> saveCard(r));
+		popup.add(save);
+		JMenuItem picture = new JMenuItem("Copy run card");
+		picture.addActionListener(e -> copyCard(r));
+		popup.add(picture);
+		popup.addSeparator();
+		JPopupMenu delete = menu("Delete this run",
+			"Delete the " + describe(r) + " from " + Format.day(r.getStartedAt()) + " at " + Format.time(r.getStartedAt())
+				+ "? Its times leave your records for good.",
+			() -> onDeleteRun.accept(r.getStartedAt()));
+		popup.add(delete.getComponent(0));
+		return popup;
+	}
+
 	private static int totalClears(Archive a)
 	{
 		int n = 0;
@@ -528,7 +1142,7 @@ public class ArchivePanel extends PluginPanel
 
 	private static String describe(Run r)
 	{
-		String party = Records.BUCKETS[Records.bucket(r.getTeamSize())].toLowerCase();
+		String party = Format.party(Records.BUCKETS[Records.bucket(r.getTeamSize())]);
 		if (r.isCompleted())
 		{
 			return Format.ticks(r.getTicks()) + " " + party + " clear";
@@ -563,7 +1177,7 @@ public class ArchivePanel extends PluginPanel
 		return row;
 	}
 
-	private static JComponent dropLine(String unique, String when, String after)
+	private static JComponent dropLine(String unique, String when)
 	{
 		JPanel row = new JPanel(new BorderLayout(6, 0));
 		row.setOpaque(false);
@@ -573,8 +1187,24 @@ public class ArchivePanel extends PluginPanel
 		left.add(Ui.label(unique, Theme.body(), tone));
 		left.add(Ui.label(when, Theme.small(), Theme.TEXT_FAINT));
 		row.add(left, BorderLayout.CENTER);
-		row.add(Ui.label(after, Theme.small(), Theme.TEXT_MUTED), BorderLayout.EAST);
+		row.setToolTipText(unique + ", " + when);
 		return row;
+	}
+
+	/** What a run's times rest on when a boss was guessed or missed, and how to put a wrong run right. */
+	private static JComponent doubts(List<String> lines)
+	{
+		Card card = new Card(new BorderLayout(0, 4));
+		card.accent(Theme.EMBER);
+		card.add(Ui.label("Check this run", Theme.body(), Theme.EMBER), BorderLayout.NORTH);
+		StackPanel body = new StackPanel(3, 0);
+		for (String line : lines)
+		{
+			body.add(Ui.wrapped(line, Theme.small(), Theme.TEXT_MUTED, WIDTH - 30));
+		}
+		body.add(Ui.wrapped("If a time is wrong, right-click the run under Records to delete it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 30));
+		card.add(body, BorderLayout.CENTER);
+		return card;
 	}
 
 	private static JComponent note(String title, String body)

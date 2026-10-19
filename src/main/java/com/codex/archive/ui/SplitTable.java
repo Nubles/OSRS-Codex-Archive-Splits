@@ -1,7 +1,7 @@
 package com.codex.archive.ui;
 
+import com.codex.archive.core.Comparison;
 import com.codex.archive.core.Encounter;
-import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
 import com.codex.archive.core.Split;
 import java.awt.BasicStroke;
@@ -29,7 +29,7 @@ public class SplitTable extends JComponent
 	private static final int NODE_X = 16;
 
 	private Run run;
-	private Run best;
+	private Comparison comparison;
 	private int elapsed;
 	private boolean live;
 	private int[] bestRooms = new int[Encounter.ROWS];
@@ -44,14 +44,14 @@ public class SplitTable extends JComponent
 
 	/**
 	 * @param run the run to show, live or finished
-	 * @param best the best run of the same party size to compare against, or null
+	 * @param comparison the marks to measure against, or null
 	 * @param bestRooms each row's best room time, or -1
 	 * @param elapsed ticks since a live run began
 	 */
-	public void update(Run run, Run best, int[] bestRooms, int elapsed, boolean live)
+	public void update(Run run, Comparison comparison, int[] bestRooms, int elapsed, boolean live)
 	{
 		this.run = run;
-		this.best = best;
+		this.comparison = comparison;
 		this.bestRooms = bestRooms;
 		this.elapsed = elapsed;
 		this.live = live;
@@ -180,6 +180,15 @@ public class SplitTable extends JComponent
 				subColor = Theme.mix(Theme.GOLD, Theme.TEXT_FAINT, 0.2);
 				sub = "best room " + Format.ticks(split.roomTicks(0));
 			}
+			else if (bestRoom >= 0)
+			{
+				// What the room alone gave away against its best, apart from how the run stands overall;
+				// a long room and its delta close up rather than lose the delta's last figures.
+				String delta = Format.delta(split.roomTicks(0) - bestRoom);
+				sub = small.stringWidth(sub + "  " + delta) <= nameRoom ? sub + "  " + delta
+					: small.stringWidth(sub + " " + delta) <= nameRoom ? sub + " " + delta
+					: Format.ticks(split.roomTicks(0)) + " room " + delta;
+			}
 		}
 		else if (current)
 		{
@@ -205,8 +214,7 @@ public class SplitTable extends JComponent
 		// The right column: the run's time at this boss, and the delta under it. The row being
 		// fought shows the best's time here as the mark to beat; the crest already runs the clock.
 		int rx = w - 10;
-		Split bestSplit = best == null ? null : best.split(row);
-		int bestEnd = bestSplit != null && bestSplit.isDone() ? bestSplit.getEndTick() : -1;
+		int bestEnd = comparison == null ? -1 : comparison.end(row);
 		String time = null;
 		Color timeColor = Theme.TEXT;
 		if (done)
@@ -230,7 +238,7 @@ public class SplitTable extends JComponent
 			Ui.shadowed(g, time, rx - body.stringWidth(time), mid - 2, timeColor);
 		}
 
-		Integer delta = done ? Records.delta(run, best, row) : null;
+		Integer delta = done && comparison != null ? comparison.delta(run, row) : null;
 		if (current && bestEnd >= 0 && elapsed > bestEnd)
 		{
 			// While fighting, only show a delta once the run is already behind: being ahead is not known until the boss falls.
@@ -243,14 +251,15 @@ public class SplitTable extends JComponent
 		else if (!done && time != null && bestEnd >= 0)
 		{
 			g.setFont(Theme.small());
-			String label = current ? "to beat" : "best";
+			String label = current ? "to beat" : comparison.getMode() == Comparison.Mode.PERSONAL_BEST ? "best"
+				: comparison.getMode().getShortLabel().toLowerCase();
 			g.setColor(current ? Theme.alpha(Theme.TEAL, 170) : Theme.TEXT_FAINT);
 			g.drawString(label, rx - small.stringWidth(label), mid + small.getAscent() + 3);
 		}
 	}
 
 	/** A small rounded tag, right-aligned at x, for a delta. */
-	private static void paintPill(Graphics2D g, String text, Color color, int right, int top)
+	static void paintPill(Graphics2D g, String text, Color color, int right, int top)
 	{
 		g.setFont(Theme.small());
 		FontMetrics fm = g.getFontMetrics();

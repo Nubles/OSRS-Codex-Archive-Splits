@@ -1,6 +1,8 @@
 package com.codex.archive.ui;
 
 import com.codex.archive.core.Archive;
+import com.codex.archive.core.Comparison;
+import com.codex.archive.core.Encounter;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
 import com.codex.archive.core.Supply;
@@ -27,15 +29,27 @@ public final class View
 	public final Run liveBest;
 	/** A run cleared moments ago while the player is still inside, for the plaque's last word; or null. */
 	public final Run cleared;
+	/** What runs are measured against. */
+	public final Comparison.Mode compare;
+	/** The marks for the live or just-cleared run, never itself; or null with neither. */
+	public final Comparison comparison;
+	/** Each row's best room for that run's party size, not counting the run itself; -1 where none. */
+	public final int[] bestRooms;
 
 	public View(String player, boolean loggedIn, Archive archive, Run live, boolean inLobby,
 		Map<Supply, Integer> pack, Map<Supply, Integer> targets, long now)
 	{
-		this(player, loggedIn, archive, live, inLobby, pack, targets, now, null);
+		this(player, loggedIn, archive, live, inLobby, pack, targets, now, null, Comparison.Mode.PERSONAL_BEST);
 	}
 
 	public View(String player, boolean loggedIn, Archive archive, Run live, boolean inLobby,
 		Map<Supply, Integer> pack, Map<Supply, Integer> targets, long now, Run cleared)
+	{
+		this(player, loggedIn, archive, live, inLobby, pack, targets, now, cleared, Comparison.Mode.PERSONAL_BEST);
+	}
+
+	public View(String player, boolean loggedIn, Archive archive, Run live, boolean inLobby,
+		Map<Supply, Integer> pack, Map<Supply, Integer> targets, long now, Run cleared, Comparison.Mode compare)
 	{
 		this.player = player;
 		this.loggedIn = loggedIn;
@@ -48,6 +62,22 @@ public final class View
 		this.cleared = cleared;
 		Run shownRun = live != null ? live : cleared;
 		this.liveBest = archive == null || shownRun == null ? null : bestBefore(archive, shownRun);
+		this.compare = compare == null ? Comparison.Mode.PERSONAL_BEST : compare;
+		this.comparison = archive == null || shownRun == null ? null
+			: Comparison.of(archive, Records.bucket(shownRun.getTeamSize()), this.compare, shownRun);
+		this.bestRooms = archive == null || shownRun == null ? new int[0] : bestRooms(archive, shownRun);
+	}
+
+	/** Each row's best room in a run's party size, from every run but that one. */
+	static int[] bestRooms(Archive archive, Run run)
+	{
+		Comparison golds = Comparison.of(archive.getRuns(), Records.bucket(run.getTeamSize()), Comparison.Mode.BEST_ROOMS, run);
+		int[] rooms = new int[Encounter.ROWS];
+		for (int row = 0; row < rooms.length; row++)
+		{
+			rooms[row] = golds.room(row);
+		}
+		return rooms;
 	}
 
 	/** The best run of the same party size, other than the run itself. */
@@ -64,6 +94,12 @@ public final class View
 			}
 		}
 		return best;
+	}
+
+	/** What the shown run is really measured against: a goal mode with no goal set falls back on the best. */
+	public Comparison.Mode measuredAgainst()
+	{
+		return comparison != null ? comparison.getMode() : compare;
 	}
 
 	/** Whether any supply has a target at all; with none, there is no pack check. */

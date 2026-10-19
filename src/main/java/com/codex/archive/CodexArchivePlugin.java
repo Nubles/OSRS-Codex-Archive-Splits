@@ -1,7 +1,10 @@
 package com.codex.archive;
 
 import com.codex.archive.core.Archive;
+import com.codex.archive.core.Comparison;
+import com.codex.archive.core.Export;
 import com.codex.archive.core.Encounter;
+import com.codex.archive.core.Goal;
 import com.codex.archive.core.LootWatch;
 import com.codex.archive.core.Messages;
 import com.codex.archive.core.Presence;
@@ -18,13 +21,19 @@ import com.codex.archive.ui.Format;
 import com.codex.archive.ui.Sigil;
 import com.codex.archive.ui.View;
 import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
+import javax.imageio.ImageIO;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Actor;
@@ -61,6 +70,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.Filepath;
+import net.runelite.client.util.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,6 +84,8 @@ public class CodexArchivePlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexArchivePlugin.class);
 	private static final String ARCHIVE_KEY = "archive";
+	/** Where a damaged save is set aside, as it was, before the archive read from it is saved over it. */
+	private static final String DAMAGED_KEY = "archiveDamaged";
 	/** How long after a clear uniques landing in the pack are still its loot, five minutes, or until the bank opens. */
 	private static final int LOOT_TICKS = 500;
 	/** How long the plaque keeps showing a clear while the player is still inside, half a minute. */
@@ -108,6 +121,9 @@ public class CodexArchivePlugin extends Plugin
 
 	@Inject
 	private CodexArchiveConfig config;
+
+	@Inject
+	private ScheduledExecutorService executor;
 
 	private final RunTracker tracker = new RunTracker();
 	private final Presence presence = new Presence();
@@ -155,6 +171,14 @@ public class CodexArchivePlugin extends Plugin
 		overlayManager.add(splitsPlaque);
 		overlayManager.add(packPlaque);
 		panel.onDelete(this::deleteRun, this::deleteDrop);
+		panel.onNotes((at, role) -> annotate(a -> a.setRole(at, role)), (at, note) -> annotate(a -> a.setNote(at, note)));
+		panel.onExport(this::export);
+		panel.onSaveCard(this::saveCard);
+		panel.onGoal((bucket, ticks) -> annotate(a ->
+		{
+			a.setGoal(bucket, ticks);
+			return true;
+		}));
 		clientThread.invokeLater(() ->
 		{
 			loadProfile();
@@ -200,6 +224,12 @@ public class CodexArchivePlugin extends Plugin
 	{
 		splitsPlaque.setEnabled(config.showPlaque());
 		packPlaque.setEnabled(config.packPlaque());
+		ArchivePanel view = panel;
+		boolean nameOnCard = config.nameOnCard();
+		if (view != null)
+		{
+			SwingUtilities.invokeLater(() -> view.setNameOnCard(nameOnCard));
+		}
 	}
 
 	@Subscribe
@@ -212,7 +242,15 @@ public class CodexArchivePlugin extends Plugin
 		{
 			try
 			{
-				if (save())
+				// Closing the client mid-run logs out of it, as the logout screen would: what was timed is kept.
+				boolean wrote = false;
+				if (tracker.isActive())
+				{
+					endRun();
+					wrote = true;
+				}
+				wrote |= save();
+				if (wrote)
 				{
 					configManager.sendConfig();
 				}
@@ -260,6 +298,12 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
 	{
+		if (tracker.isActive())
+		{
+			// The account is changing under a run, as on logging out before the login screen shows:
+			// the run belongs to the account it was timed on, so it is put away there first.
+			endRun();
+		}
 		save();
 		loadProfile();
 		publish();
@@ -314,11 +358,17 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
+		String name = npc.getName() == null ? null : Text.removeTags(npc.getName());
 		Encounter encounter = tracker.resolve(npc.getName(), npc.getCombatLevel());
 		if (encounter != null)
 		{
-			tracker.engage(encounter, tick);
+			tracker.engage(encounter, tick, name, npc.getCombatLevel());
 			dirty = true;
+		}
+		else
+		{
+			// Kept so a boss that goes unrecognised can show what the run did see.
+			tracker.foe(name, npc.getCombatLevel());
 		}
 	}
 
@@ -440,6 +490,7 @@ public class CodexArchivePlugin extends Plugin
 			if (tracker.nextRow() == 0 && view != null)
 			{
 				tracker.seeTeam(count(view));
+				tracker.seeCrew(crew(view));
 			}
 			tracker.tick(tick);
 			int row = tracker.nextRow();
@@ -480,6 +531,21 @@ public class CodexArchivePlugin extends Plugin
 		return n;
 	}
 
+	/** The other raiders in view, by their names as the game shows them. */
+	private List<String> crew(WorldView view)
+	{
+		List<String> names = new ArrayList<>();
+		Player me = client.getLocalPlayer();
+		for (Player p : view.players())
+		{
+			if (p != null && p != me && p.getName() != null)
+			{
+				names.add(Text.sanitize(p.getName()));
+			}
+		}
+		return names;
+	}
+
 	private static boolean isLobbyNpc(NPC npc)
 	{
 		String name = npc.getName();
@@ -502,6 +568,10 @@ public class CodexArchivePlugin extends Plugin
 	{
 		WorldView view = client.getTopLevelWorldView();
 		tracker.begin(System.currentTimeMillis(), at, view == null ? 1 : count(view), pack);
+		if (view != null)
+		{
+			tracker.seeCrew(crew(view));
+		}
 		loot.open(heldUniques());
 		announcedRow = 0;
 		wipeAnnounced = false;
@@ -641,6 +711,96 @@ public class CodexArchivePlugin extends Plugin
 		});
 	}
 
+	/** A role or note the player wrote on a run in the panel. */
+	private void annotate(java.util.function.Predicate<Archive> change)
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (archive != null && change.test(archive))
+			{
+				unsaved = true;
+				changed = true;
+				save();
+				publish();
+			}
+		});
+	}
+
+	/** Asks where to save the run history with RuneLite's own file chooser, then writes it there; runs on the Swing thread. */
+	private void export()
+	{
+		ArchivePanel view = panel;
+		Archive copy = view == null ? null : view.archive();
+		if (copy == null)
+		{
+			return;
+		}
+		List<Filepath> chosen = new Filepath.Chooser()
+			.setIsSave()
+			.setAcceptsFiles()
+			.setDialogTitle("Save Fractured Archive runs")
+			.addExtensionFilter("Spreadsheet (CSV)", "csv")
+			.setDefaultExtension("csv")
+			.setFileName("Fractured Archive runs.csv")
+			.showDialog(view);
+		if (chosen == null || chosen.isEmpty())
+		{
+			return;
+		}
+		Filepath target = chosen.get(0);
+		String csv = Export.csv(copy.getRuns(), ZoneId.systemDefault());
+		executor.execute(() ->
+		{
+			try
+			{
+				target.write(csv);
+			}
+			catch (IOException e)
+			{
+				log.warn("Could not save the run history", e);
+			}
+		});
+	}
+
+	/** Asks where to save a run or session card with RuneLite's own file chooser, then writes it there; runs on the Swing thread. */
+	private void saveCard(BufferedImage card, String name)
+	{
+		ArchivePanel view = panel;
+		if (view == null)
+		{
+			return;
+		}
+		List<Filepath> chosen = new Filepath.Chooser()
+			.setIsSave()
+			.setAcceptsFiles()
+			.setDialogTitle("Save card")
+			.addExtensionFilter("PNG image", "png")
+			.setDefaultExtension("png")
+			.setFileName(name + ".png")
+			.showDialog(view);
+		if (chosen == null || chosen.isEmpty())
+		{
+			return;
+		}
+		Filepath target = chosen.get(0);
+		executor.execute(() ->
+		{
+			String note;
+			try (OutputStream out = target.openOutputStream())
+			{
+				ImageIO.write(card, "png", out);
+				note = "Card saved as " + target.getFileName() + ".";
+			}
+			catch (IOException e)
+			{
+				log.warn("Could not save the card", e);
+				note = "The card could not be saved: " + e.getMessage();
+			}
+			String shown = note;
+			SwingUtilities.invokeLater(() -> view.cardNote(shown));
+		});
+	}
+
 	private void deleteDrop(long at, String unique)
 	{
 		clientThread.invokeLater(() ->
@@ -663,14 +823,16 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
-		Run best = Records.best(archive.getRuns(), Records.bucket(live.getTeamSize()));
-		Integer delta = Records.delta(live, best, row);
+		Comparison.Mode mode = config.compareTo();
+		Comparison against = Comparison.of(archive, Records.bucket(live.getTeamSize()), mode, live);
+		Integer delta = against.delta(live, row);
+		mode = against.getMode();
 		ChatMessageBuilder line = new ChatMessageBuilder()
 			.append(ChatColorType.HIGHLIGHT).append(split.getEncounter().getShortName())
 			.append(ChatColorType.NORMAL).append(" down at " + Format.ticks(split.getEndTick()));
 		if (delta != null)
 		{
-			line.append(", ").append(ChatColorType.HIGHLIGHT).append(Format.versus(delta)).append(ChatColorType.NORMAL);
+			line.append(", ").append(ChatColorType.HIGHLIGHT).append(Format.versus(delta, mode.getNoun())).append(ChatColorType.NORMAL);
 		}
 		line.append(". Room " + Format.ticks(split.roomTicks(0)) + ", fight " + Format.ticks(split.fightTicks(0)) + ".");
 		chat(line);
@@ -706,6 +868,12 @@ public class CodexArchivePlugin extends Plugin
 		{
 			line.append(", " + Format.versus(run.getTicks() - best.getTicks()) + ".");
 		}
+		int goal = archive.goal(bucket);
+		if (goal > 0 && run.getTicks() <= goal && Goal.of(archive.getRuns(), bucket, goal).getBeaten() == 1)
+		{
+			// The history already holds this run, so it is the only one under the goal.
+			line.append(ChatColorType.HIGHLIGHT).append(" Your goal of " + Format.clock(goal) + " is beaten for the first time.");
+		}
 		chat(line);
 	}
 
@@ -727,23 +895,15 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
-		try
+		String saved = configManager.getRSProfileConfiguration(CodexArchiveConfig.GROUP, ARCHIVE_KEY);
+		Archive.Loaded read = Archive.read(gson, saved);
+		if (read.damaged)
 		{
-			String saved = configManager.getRSProfileConfiguration(CodexArchiveConfig.GROUP, ARCHIVE_KEY);
-			if (saved != null && !saved.isEmpty())
-			{
-				Archive read = gson.fromJson(saved, Archive.class);
-				archive = read == null ? null : read.repair();
-			}
+			// The save as it was is kept aside before anything is written over it.
+			log.warn("The saved archive was damaged; kept what still reads and set the save as it was aside");
+			configManager.setConfiguration(CodexArchiveConfig.GROUP, profile, DAMAGED_KEY, saved);
 		}
-		catch (JsonParseException e)
-		{
-			log.warn("Could not read the saved archive, starting it afresh", e);
-		}
-		if (archive == null)
-		{
-			archive = new Archive();
-		}
+		archive = read.archive != null ? read.archive : new Archive();
 		unsaved = false;
 		shown = null;
 		dirty = true;
@@ -782,14 +942,14 @@ public class CodexArchivePlugin extends Plugin
 		}
 		else if (shown == null || changed)
 		{
-			shown = gson.fromJson(gson.toJson(archive), Archive.class).repair();
+			shown = archive.copy();
 		}
 		changed = false;
 		Archive copy = shown;
 		Run live = tracker.view(tick);
 		boolean inLobby = loggedIn && presence.isInLobby() && !tracker.isActive();
 		View view = new View(loggedIn && player != null ? player.getName() : null, loggedIn, copy, live, inLobby,
-			pack, targets(), System.currentTimeMillis(), live == null ? lastClear : null);
+			pack, targets(), System.currentTimeMillis(), live == null ? lastClear : null, config.compareTo());
 		splitsPlaque.show(view);
 		packPlaque.show(view);
 		ArchivePanel target = panel;

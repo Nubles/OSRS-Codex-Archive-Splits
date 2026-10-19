@@ -1,5 +1,6 @@
 package com.codex.archive;
 
+import com.codex.archive.core.Comparison;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -21,7 +22,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "showPlaque",
 		name = "Splits plaque",
-		description = "Show the live room and run timers, and how you stand against your best, in the game view during a run",
+		description = "During a run, show the room and run timers in the game view, and how you stand against what you compare with",
 		position = 0
 	)
 	default boolean showPlaque()
@@ -32,10 +33,32 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "chatSplits",
 		name = "Splits in chat",
-		description = "When a boss falls, write its time and how it stands against your best in the chat box, and the final time at the end",
+		description = "When a boss falls, write its time in the chat box with how it stands, and the final time when the run ends",
 		position = 1
 	)
 	default boolean chatSplits()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "compareTo",
+		name = "Compare against",
+		description = "What each boss's time is measured against: your best run, your best rooms strung together, your typical run (the middle of your last 10 clears) or the goal time you set on the Records page",
+		position = 2
+	)
+	default Comparison.Mode compareTo()
+	{
+		return Comparison.Mode.PERSONAL_BEST;
+	}
+
+	@ConfigItem(
+		keyName = "nameOnCard",
+		name = "Name on cards",
+		description = "Write your character's name on run and session cards, and your party's on run cards; turn off to share them without any names",
+		position = 3
+	)
+	default boolean nameOnCard()
 	{
 		return true;
 	}

@@ -69,11 +69,17 @@ public final class Format
 	/** A delta in words, for the chat box: "4.2s ahead of your best", "1:12.0 behind your best". */
 	public static String versus(int ticks)
 	{
+		return versus(ticks, "your best");
+	}
+
+	/** The same against any mark: "4.2s ahead of your best rooms". */
+	public static String versus(int ticks, String mark)
+	{
 		if (ticks == 0)
 		{
-			return "level with your best";
+			return "level with " + mark;
 		}
-		return span(ticks) + (ticks < 0 ? " ahead of" : " behind") + " your best";
+		return span(ticks) + (ticks < 0 ? " ahead of " : " behind ") + mark;
 	}
 
 	public static String count(long n)
@@ -112,10 +118,22 @@ public final class Format
 		return SHORT.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()));
 	}
 
+	/** "2026-10-20", for a file name. */
+	public static String fileDay(long epochMs)
+	{
+		return Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().toString();
+	}
+
 	/** "14:02". */
 	public static String time(long epochMs)
 	{
-		return CLOCK.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()));
+		return time(epochMs, ZoneId.systemDefault());
+	}
+
+	/** The clock time in a zone, so a card's times agree with its date. */
+	public static String time(long epochMs, ZoneId zone)
+	{
+		return CLOCK.format(Instant.ofEpochMilli(epochMs).atZone(zone));
 	}
 
 	/** "1st", "2nd", "11th", "23rd". */
@@ -124,5 +142,21 @@ public final class Format
 		int mod100 = n % 100;
 		String suffix = mod100 >= 11 && mod100 <= 13 ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th";
 		return n + suffix;
+	}
+
+	/** A party-size group as a word before a noun: "trio", "4-raider", "6+ raider". */
+	public static String party(String bucket)
+	{
+		if (bucket.isEmpty() || !Character.isDigit(bucket.charAt(0)))
+		{
+			return bucket.toLowerCase(Locale.ENGLISH);
+		}
+		return bucket + (bucket.endsWith("+") ? " raider" : "-raider");
+	}
+
+	/** "trio clear", "4-raider clear". */
+	public static String clear(String bucket)
+	{
+		return party(bucket) + " clear";
 	}
 }

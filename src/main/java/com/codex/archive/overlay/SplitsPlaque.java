@@ -1,5 +1,6 @@
 package com.codex.archive.overlay;
 
+import com.codex.archive.core.Comparison;
 import com.codex.archive.core.Encounter;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
@@ -57,15 +58,23 @@ public class SplitsPlaque extends Overlay
 		boolean done = row >= Encounter.ROWS || run.isCompleted();
 		Split split = done ? null : run.split(row);
 		Run best = v.liveBest;
+		Comparison cmp = v.comparison;
 		Integer delta;
 		if (done)
 		{
+			// The final word is always against the best run: a clear either is a new best or is not.
 			delta = best == null ? null : run.getTicks() - best.getTicks();
 		}
 		else
 		{
-			delta = row > 0 ? Records.delta(run, best, row - 1) : null;
+			delta = null;
+			for (int r = row - 1; r >= 0 && delta == null && cmp != null; r--)
+			{
+				delta = cmp.delta(run, r);
+			}
 		}
+		int possible = done ? -1 : Comparison.bestPossible(run, v.bestRooms, run.getTicks());
+		String possibleText = possible < 0 ? null : "Possible " + Format.ticks(possible);
 
 		String room;
 		if (done)
@@ -100,7 +109,11 @@ public class SplitsPlaque extends Overlay
 		int line1 = icon + 6 + bold.stringWidth(room) + 12 + small.stringWidth(roomClock);
 		int line2 = small.stringWidth("Run " + total) + (deltaText == null ? 0 : 12 + small.stringWidth(deltaText));
 		int width = PAD * 2 + Math.max(line1, line2 + icon + 6);
-		int height = PAD * 2 + bold.getHeight() + small.getHeight();
+		if (possibleText != null)
+		{
+			width = Math.max(width, PAD * 2 + icon + 6 + small.stringWidth(possibleText));
+		}
+		int height = PAD * 2 + bold.getHeight() + small.getHeight() + (possibleText == null ? 0 : small.getHeight() + 1);
 
 		Plaque.paint(g, width, height, done ? Theme.alpha(Theme.GOLD, 190) : Theme.alpha(Theme.TEAL, 150));
 		int x = PAD;
@@ -118,6 +131,10 @@ public class SplitsPlaque extends Overlay
 		{
 			Color c = Theme.delta(delta);
 			Ui.shadowed(g, deltaText, width - PAD - small.stringWidth(deltaText), base2, c);
+		}
+		if (possibleText != null)
+		{
+			Ui.shadowed(g, possibleText, x, base2 + small.getHeight() + 1, Theme.alpha(Theme.GOLD, 210));
 		}
 		g.dispose();
 		return new Dimension(width, height);

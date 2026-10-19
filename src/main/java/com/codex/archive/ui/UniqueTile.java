@@ -74,7 +74,7 @@ class UniqueTile extends JComponent
 		String name = Ui.clip(Spoils.shortName(unique), small, w - 8);
 		g.setColor(owned ? Theme.TEXT : Theme.TEXT_FAINT);
 		g.drawString(name, (w - small.stringWidth(name)) / 2, h - 18);
-		String n = owned ? "x" + count : "-";
+		String n = owned ? "\u00d7" + count : "not yet";
 		g.setColor(owned ? tone : Theme.TEXT_FAINT);
 		g.drawString(n, (w - small.stringWidth(n)) / 2, h - 6);
 		g.dispose();

@@ -55,7 +55,14 @@ class StatTile extends JComponent
 
 		g.setFont(Theme.title());
 		FontMetrics bold = g.getFontMetrics();
-		Ui.shadowed(g, Ui.clip(value, bold, w - 16), x + 8, y + 8 + small.getHeight() + bold.getAscent(), color);
+		int baseline = y + 8 + small.getHeight() + bold.getAscent();
+		if (bold.stringWidth(value) > w - 16)
+		{
+			// A clear of ten minutes or more is too wide for a third of the panel in the large face.
+			g.setFont(Theme.body());
+			bold = g.getFontMetrics();
+		}
+		Ui.shadowed(g, Ui.clip(value, bold, w - 14), x + 8, baseline, color);
 		if (note != null && !note.isEmpty())
 		{
 			g.setFont(Theme.small());
