@@ -75,6 +75,17 @@ public class DamagedSaveTest
 		out.add(save.replace("{\"runs\":", "{\"version\":99,\"shelf\":{\"a\":[1,{\"b\":2}]},\"runs\":"));
 		out.add(save.replaceFirst("\"ticks\":\\d+", "\"ticks\":\"slow\""));
 		out.add(save.replaceFirst("\"teamSize\":\\d+", "\"teamSize\":{}"));
+		// Every number in turn too big, below zero, a fraction, a word or nothing; every string a number or nonsense; every list and object the wrong shape.
+		for (String n : new String[]{"99999999999999999999", "-5", "-9223372036854775808", "9223372036854775807", "2147483648", "1e308", "0.5", "\"many\"", "null", "{}", "[]"})
+		{
+			out.add(save.replaceAll("(?<=[:\\[,])-?\\d+(\\.\\d+)?(?=[,\\]}])", n));
+			out.add(save.replaceFirst("(?<=[:\\[,])-?\\d+(\\.\\d+)?(?=[,\\]}])", n));
+		}
+		out.add(save.replaceAll("(?<=:)\"[^\"]*\"", "7"));
+		out.add(save.replaceAll("(?<=:)\"[^\"]*\"", "\"\""));
+		out.add(save.replaceAll("(?<=:)\"[^\"]*\"", "\"NOT_A_THING\""));
+		out.add(save.replaceAll("\\[", "{").replaceAll("]", "}"));
+		out.add(save.replaceAll("(?<=:)\\{", "[").replaceAll("}(?=[,}])", "]"));
 		for (int cut = 1; cut < 20; cut++)
 		{
 			out.add(save.substring(0, save.length() * cut / 20));
