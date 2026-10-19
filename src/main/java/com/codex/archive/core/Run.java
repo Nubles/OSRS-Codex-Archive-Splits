@@ -135,7 +135,24 @@ public class Run
 			}
 		}
 		// Unrecognised foes matter only when a boss went untimed: an add in a timed room is no doubt.
-		return !getUnknown().isEmpty() && splits.size() < Encounter.ROWS;
+		return !getUnknown().isEmpty() && !untimedRows().isEmpty();
+	}
+
+	/**
+	 * The rows up to the one the run ended in that have no split, so a boss the run reached went
+	 * untimed; empty when every boss reached was timed, as in a wipe to a boss known by name.
+	 */
+	public List<Integer> untimedRows()
+	{
+		List<Integer> rows = new ArrayList<>();
+		for (int row = 0; row < Math.min(Encounter.ROWS, reached() + 1); row++)
+		{
+			if (split(row) == null)
+			{
+				rows.add(row);
+			}
+		}
+		return rows;
 	}
 
 	/** Forgets the detection notes, which only matter while the run is fresh. */

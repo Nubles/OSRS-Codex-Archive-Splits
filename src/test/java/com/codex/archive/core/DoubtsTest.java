@@ -121,6 +121,21 @@ public class DoubtsTest
 	}
 
 	@Test
+	public void addsInAWipeWhereEveryBossReachedWasTimedAreNoDoubt()
+	{
+		RunTracker t = new RunTracker();
+		t.begin(0, 0, 1, null);
+		fight(t, Encounter.GUARDIAN, "Archive Guardian", 300, 5, 50);
+		fight(t, Encounter.BORK, "Bork", 267, 70, 150);
+		t.foe("Smork", 160);
+		// The team falls to Dreadnoth, known by name: every boss reached has its split.
+		t.engage(Encounter.DREADNOTH, 170, "Dreadnoth the Jellied", 400);
+		Run run = t.finish(300, true);
+		assertFalse(run.hasDoubts());
+		assertTrue(Doubts.of(run).isEmpty());
+	}
+
+	@Test
 	public void onlyTheLatestRunsKeepWhatTheyWereToldFrom()
 	{
 		Archive archive = new Archive();

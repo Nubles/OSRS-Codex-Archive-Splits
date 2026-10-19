@@ -34,18 +34,15 @@ public final class Doubts
 			lines.add(s.getEncounter().getShortName() + " was told by its size: " + s.getSeen() + level + ".");
 		}
 		List<String> unknown = run.getUnknown();
-		if (!unknown.isEmpty() && run.getSplits().size() < Encounter.ROWS)
+		List<Integer> untimed = run.untimedRows();
+		if (!unknown.isEmpty() && !untimed.isEmpty())
 		{
 			StringBuilder missed = new StringBuilder();
-			for (int row = 0; row < Math.min(Encounter.ROWS, run.reached() + 1); row++)
+			for (int row : untimed)
 			{
-				if (run.split(row) == null)
-				{
-					missed.append(missed.length() > 0 ? ", " : "").append(Encounter.rowLabel(row));
-				}
+				missed.append(missed.length() > 0 ? ", " : "").append(Encounter.rowLabel(row));
 			}
-			String head = missed.length() > 0 ? "Not timed: " + missed + ". " : "";
-			lines.add(head + "Big foes no boss name matched: " + String.join(", ", unknown) + ".");
+			lines.add("Not timed: " + missed + ". Big foes no boss name matched: " + String.join(", ", unknown) + ".");
 		}
 		return lines;
 	}
