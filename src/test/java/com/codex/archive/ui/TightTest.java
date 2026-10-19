@@ -22,6 +22,24 @@ public class TightTest
 		g.dispose();
 	}
 
+	@Test
+	public void setsEveryFigureTheSameDistanceFromTheNext()
+	{
+		Graphics2D g = new BufferedImage(10, 10, BufferedImage.TYPE_INT_ARGB).createGraphics();
+		g.setFont(Theme.title().deriveFont(Theme.title().getSize2D() * 3.5f));
+		// The font gives a 1 a digit's room and a 9 a wide left side, which opened "1 0:0 9.0".
+		for (String time : new String[]{"10:09.0", "11:43.8", "12:03.6"})
+		{
+			Tight.Layout set = Tight.layout(g, time);
+			float first = gapBefore(g, set, 1);
+			for (int i = 2; i < time.length(); i++)
+			{
+				assertEquals(time + " at " + i, first, gapBefore(g, set, i), 0.01);
+			}
+		}
+		g.dispose();
+	}
+
 	/** The space between the ink of glyph i - 1 and glyph i. */
 	private static float gapBefore(Graphics2D g, Tight.Layout set, int i)
 	{

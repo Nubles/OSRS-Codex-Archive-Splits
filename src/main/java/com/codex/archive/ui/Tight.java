@@ -9,13 +9,14 @@ import java.awt.geom.Rectangle2D;
 /**
  * A time set large in the pixel font with even spacing. The font gives a colon and a point as
  * much room as a digit, so at three or four times its size a gap opens beside them ("6 :54.0").
- * Here figures keep the font's own spacing, and a colon or point is placed by the ink it
- * draws, a small even gap from the figures either side.
+ * Its figures are uneven too: a 1 keeps a whole digit's room and a 9 a wide left side ("1 0:0 9.0").
+ * Here every figure, colon and point is placed by the ink it draws, one small even gap from the
+ * next; letters keep the font's own spacing.
  */
 final class Tight
 {
-	/** The gap either side of a colon or point, as a share of the font's size. */
-	private static final float PUNCTUATION_GAP = 0.07f;
+	/** The gap between the figures, colons and points of a time, as a share of the font's size. */
+	private static final float GAP = 0.07f;
 
 	private Tight()
 	{
@@ -53,12 +54,18 @@ final class Tight
 		return c == ':' || c == '.';
 	}
 
+	/** A digit, colon or point: set by its ink, as the font's own spacing of them is uneven. */
+	static boolean figure(char c)
+	{
+		return narrow(c) || (c >= '0' && c <= '9');
+	}
+
 	/** Lays a text out in the graphics' current font. */
 	static Layout layout(Graphics2D g, String text)
 	{
 		Font font = g.getFont();
 		FontRenderContext frc = g.getFontRenderContext();
-		float gap = font.getSize2D() * PUNCTUATION_GAP;
+		float gap = font.getSize2D() * GAP;
 		float[] pens = new float[text.length()];
 		float pen = 0;
 		float right = 0;
@@ -73,7 +80,7 @@ final class Tight
 			{
 				lead = (float) box.getX();
 			}
-			else if (narrow(c) || narrow(text.charAt(i - 1)))
+			else if (figure(c) && figure(text.charAt(i - 1)))
 			{
 				pen = right + gap - (float) box.getX();
 			}
