@@ -23,6 +23,7 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
 - **Where runs wipe.** The bosses your runs have wiped at, with how many tries there it took and the share that ended there, so you know which fight to practise. A wipe before either door of a row was seen is left out, since there is no telling which door it was.
 - **Crew and notes.** The raiders you were with are noted on every run, and the Records page lists who you raid with most and your best clear together. Right-click a run to note your role (tank, melee, ranged, magic, support, learner) or write a note on it, which shows on the run and in the export.
 - **Run card.** After a run, press *Save run card* or *Copy run card* on the Run page (or right-click any run on the Records page) for the run on a gilt page made to share: the time large, a ribbon for what it was ("New personal best, 31.2s off", "First trio clear", "Wiped at Xarth"), and the five bosses down a thread with each room's time, the run's time at the fall and the gap to your best there. Every room that was your quickest yet carries a gold mark. Under it: how many golds, deaths, which clear of that party size it was, the crew and the route. A run is always measured against the runs before it, so an old personal best's card still says so. Turn off *Name on cards* to share one without your name or your party's.
+- **Session card.** Under *This session* on the Run page, *Save session card* or *Copy* gives the whole sitting on the same gilt page: the night's best clear large, a ribbon for what it brought (a purple, a new best, a first clear, or how close it came to your best), and every run as a bar of its time with its tags, the best lit and each wipe saying where it stopped. Under it: the average clear, clears an hour and the time between runs. *Name on cards* leaves your name off this one too.
 - **Share and export.** Right-click a run to copy its splits as text for a chat, or save your whole history as a spreadsheet (CSV) with every room and fight in seconds, through RuneLite's own save dialog.
 - **Spoils.** Your dry streak and the longest you've gone, your purples and how often they come, how much of the log you have, a tablet for each unique that lights up once you've got it, and a log of every purple with the KC it came on and how many clears it took.
 - **Pack check.** In the lobby, bars for food, brews, restores and boosts against the amounts you set in the plugin's settings, plus a plaque in the game view naming anything you're short of. Set a supply to 0 to leave it out of the check, or all of them to turn the check off.
@@ -42,6 +43,7 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
   <img src="docs/screenshots/routes.png" width="225" alt="Your best over time, doors and routes">
   <br>
   <img src="docs/screenshots/run-card.png" width="360" alt="A run card">
+  <img src="docs/screenshots/session-card.png" width="360" alt="A session card">
 </p>
 
 ## How it times

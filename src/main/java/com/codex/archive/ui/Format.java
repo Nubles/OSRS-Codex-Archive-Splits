@@ -137,4 +137,20 @@ public final class Format
 		String suffix = mod100 >= 11 && mod100 <= 13 ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th";
 		return n + suffix;
 	}
+
+	/** A party-size group as a word before a noun: "trio", "4-raider", "6+ raider". */
+	public static String party(String bucket)
+	{
+		if (bucket.isEmpty() || !Character.isDigit(bucket.charAt(0)))
+		{
+			return bucket.toLowerCase(Locale.ENGLISH);
+		}
+		return bucket + (bucket.endsWith("+") ? " raider" : "-raider");
+	}
+
+	/** "trio clear", "4-raider clear". */
+	public static String clear(String bucket)
+	{
+		return party(bucket) + " clear";
+	}
 }

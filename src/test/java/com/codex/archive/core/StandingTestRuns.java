@@ -41,4 +41,11 @@ public final class StandingTestRuns
 		}
 		return run;
 	}
+
+	/** The run with a purple. */
+	public static Run withPurple(Run run, String unique)
+	{
+		run.setPurple(unique);
+		return run;
+	}
 }

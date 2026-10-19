@@ -20,7 +20,7 @@ public final class Share
 	public static String splits(Run run, Comparison pb)
 	{
 		StringBuilder sb = new StringBuilder();
-		String party = Records.BUCKETS[Records.bucket(run.getTeamSize())].toLowerCase();
+		String party = Format.party(Records.BUCKETS[Records.bucket(run.getTeamSize())]);
 		sb.append("Fractured Archive, ").append(party).append(", ").append(Format.day(run.getStartedAt())).append('\n');
 		for (int row = 0; row < Encounter.ROWS; row++)
 		{

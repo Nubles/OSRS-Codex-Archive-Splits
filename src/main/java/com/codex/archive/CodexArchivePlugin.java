@@ -761,7 +761,7 @@ public class CodexArchivePlugin extends Plugin
 		});
 	}
 
-	/** Asks where to save a run card with RuneLite's own file chooser, then writes it there; runs on the Swing thread. */
+	/** Asks where to save a run or session card with RuneLite's own file chooser, then writes it there; runs on the Swing thread. */
 	private void saveCard(BufferedImage card, String name)
 	{
 		ArchivePanel view = panel;
@@ -772,7 +772,7 @@ public class CodexArchivePlugin extends Plugin
 		List<Filepath> chosen = new Filepath.Chooser()
 			.setIsSave()
 			.setAcceptsFiles()
-			.setDialogTitle("Save run card")
+			.setDialogTitle("Save card")
 			.addExtensionFilter("PNG image", "png")
 			.setDefaultExtension("png")
 			.setFileName(name + ".png")
@@ -788,12 +788,12 @@ public class CodexArchivePlugin extends Plugin
 			try (OutputStream out = target.openOutputStream())
 			{
 				ImageIO.write(card, "png", out);
-				note = "Run card saved as " + target.getFileName() + ".";
+				note = "Card saved as " + target.getFileName() + ".";
 			}
 			catch (IOException e)
 			{
-				log.warn("Could not save the run card", e);
-				note = "The run card could not be saved: " + e.getMessage();
+				log.warn("Could not save the card", e);
+				note = "The card could not be saved: " + e.getMessage();
 			}
 			String shown = note;
 			SwingUtilities.invokeLater(() -> view.cardNote(shown));

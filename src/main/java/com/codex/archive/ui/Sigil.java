@@ -90,4 +90,43 @@ public final class Sigil
 		g.setColor(Theme.INK_DEEP);
 		g.draw(shard);
 	}
+
+	/**
+	 * The mark as a fine engraving: its outlines only, in one colour, for a watermark. Filled
+	 * shapes faded to a few percent read as a smudge on the page; thin lines stay crisp.
+	 */
+	public static void engrave(Graphics2D g, float x, float y, float size, java.awt.Color color)
+	{
+		float s = size / 16f;
+		g.setColor(color);
+		g.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		for (int side = -1; side <= 1; side += 2)
+		{
+			Path2D page = new Path2D.Float();
+			page.moveTo(x + 8 * s, y + 6.4f * s);
+			page.curveTo(x + (8 + side * 2) * s, y + 5.2f * s, x + (8 + side * 5) * s, y + 5 * s, x + (8 + side * 7.2f) * s, y + 6 * s);
+			page.lineTo(x + (8 + side * 7.2f) * s, y + 14.2f * s);
+			page.curveTo(x + (8 + side * 5) * s, y + 13.4f * s, x + (8 + side * 2) * s, y + 13.6f * s, x + 8 * s, y + 14.8f * s);
+			page.closePath();
+			g.draw(page);
+		}
+		for (int i = 0; i < 3; i++)
+		{
+			float ly = y + (8.4f + i * 1.9f) * s;
+			g.draw(new java.awt.geom.Line2D.Float(x + 2.2f * s, ly, x + 6.4f * s, ly + 0.3f * s));
+		}
+		Path2D crack = new Path2D.Float();
+		crack.moveTo(x + 11.6f * s, y + 5.6f * s);
+		crack.lineTo(x + 10.6f * s, y + 8.4f * s);
+		crack.lineTo(x + 12.4f * s, y + 9.8f * s);
+		crack.lineTo(x + 10.8f * s, y + 13.8f * s);
+		g.draw(crack);
+		Path2D shard = new Path2D.Float();
+		shard.moveTo(x + 11.2f * s, y + 0.6f * s);
+		shard.lineTo(x + 12.9f * s, y + 2.6f * s);
+		shard.lineTo(x + 11.2f * s, y + 4.6f * s);
+		shard.lineTo(x + 9.5f * s, y + 2.6f * s);
+		shard.closePath();
+		g.draw(shard);
+	}
 }

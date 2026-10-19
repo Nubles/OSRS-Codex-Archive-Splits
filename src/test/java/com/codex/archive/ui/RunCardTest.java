@@ -27,7 +27,7 @@ public class RunCardTest
 		List<Run> runs = Arrays.asList(first, best, slower, level, wipe);
 		assertEquals("First trio clear", RunCard.verdict(Standing.of(runs, first)));
 		assertEquals("New personal best, 31.2s off", RunCard.verdict(Standing.of(runs, best)));
-		assertEquals("+42.0 on your best", RunCard.verdict(Standing.of(runs, slower)));
+		assertEquals("42.0s behind your best", RunCard.verdict(Standing.of(runs, slower)));
 		assertEquals("Level with your best", RunCard.verdict(Standing.of(runs, level)));
 		assertEquals("Wiped at Dreadnoth", RunCard.verdict(Standing.of(runs, wipe)));
 

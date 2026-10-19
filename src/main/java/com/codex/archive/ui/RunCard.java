@@ -6,10 +6,8 @@ import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
 import com.codex.archive.core.Split;
 import com.codex.archive.core.Standing;
-import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Composite;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.GradientPaint;
@@ -99,15 +97,17 @@ public final class RunCard
 		g.setFont(huge);
 		FontMetrics hm = g.getFontMetrics();
 		String time = Format.ticks(run.getTicks());
-		int tw = hm.stringWidth(time);
-		int tx = x + (w - tw) / 2;
+		// Set glyph by glyph: the pixel font gives a colon and a point a digit's spacing, which at
+		// this size opens a gap ("6 :54.0"); they sit close to their figures instead.
+		Tight.Layout set = Tight.layout(g, time);
+		float tx = x + (w - set.width) / 2f;
 		int base = y + hm.getAscent() - 10;
 		g.setColor(Color.BLACK);
-		g.drawString(time, tx + 2, base + 2);
+		set.draw(g, tx + 2, base + 2);
 		Color top = cleared ? Theme.GOLD_BRIGHT : Theme.mix(Theme.EMBER, Theme.TEXT, 0.25);
 		Color bottom = cleared ? Theme.GOLD_DIM : Theme.mix(Theme.EMBER, Theme.INK, 0.35);
 		g.setPaint(new GradientPaint(0, base - hm.getAscent() + 12, top, 0, base, bottom));
-		g.drawString(time, tx, base);
+		set.draw(g, tx, base);
 		y = base + 10;
 
 		// The ribbon: what the run was, in a word or two.
@@ -213,7 +213,7 @@ public final class RunCard
 			run.getDeaths() == 0 ? Theme.GREEN : Theme.EMBER, x + tileW + 6, y, tileW, tileH);
 		if (st.getClearNumber() > 0)
 		{
-			StatTile.paint(g, Format.ordinal(st.getClearNumber()), "Clear", party.toLowerCase() + " clear",
+			StatTile.paint(g, Format.ordinal(st.getClearNumber()), "Clear", Format.clear(party),
 				Theme.TEAL, x + (tileW + 6) * 2, y, w - (tileW + 6) * 2, tileH);
 		}
 		else
@@ -255,7 +255,7 @@ public final class RunCard
 		return (s != null && s.isDone()) || row < run.reached() || (run.getOutcome() == Outcome.WIPED && row == run.reached());
 	}
 
-	/** "New personal best, 31.2s off", "First trio clear", "+42.0 on your best", "Wiped at Xarth". */
+	/** "New personal best, 31.2s off", "First trio clear", "42.0s behind your best", "Wiped at Xarth". */
 	static String verdict(Standing st)
 	{
 		Run run = st.getRun();
@@ -272,14 +272,15 @@ public final class RunCard
 		}
 		if (st.isFirstClear())
 		{
-			return "First " + Records.BUCKETS[Records.bucket(run.getTeamSize())].toLowerCase() + " clear";
+			return "First " + Format.clear(Records.BUCKETS[Records.bucket(run.getTeamSize())]);
 		}
 		int delta = st.totalDelta();
 		if (delta < 0)
 		{
 			return "New personal best, " + Format.span(-delta) + " off";
 		}
-		return delta == 0 ? "Level with your best" : Format.delta(delta) + " on your best";
+		// "Off" is kept for time taken off a best; a slower run is behind it, in the same seconds.
+		return delta == 0 ? "Level with your best" : Format.span(delta) + " behind your best";
 	}
 
 	private static Color ribbonColor(Standing st)
@@ -301,7 +302,7 @@ public final class RunCard
 		return String.join(", ", names.subList(0, 3)) + " and " + (names.size() - 3) + " more";
 	}
 
-	private static void ribbon(Graphics2D g, String text, Color color, int cx, int y)
+	static void ribbon(Graphics2D g, String text, Color color, int cx, int y)
 	{
 		g.setFont(Theme.body());
 		FontMetrics fm = g.getFontMetrics();
@@ -363,7 +364,7 @@ public final class RunCard
 		}
 	}
 
-	private static void frame(Graphics2D g, int h, boolean best)
+	static void frame(Graphics2D g, int h, boolean best)
 	{
 		int w = WIDTH;
 		RoundRectangle2D page = new RoundRectangle2D.Float(0, 0, w, h, 18, 18);
@@ -380,10 +381,8 @@ public final class RunCard
 			g.setColor(Theme.alpha(grain.nextBoolean() ? Theme.GOLD_BRIGHT : Color.BLACK, 6 + grain.nextInt(8)));
 			g.fillRect(grain.nextInt(w), grain.nextInt(h), 1, 1);
 		}
-		Composite old = g.getComposite();
-		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.04f));
-		Sigil.paint(g, w - 196, h - 206, 180);
-		g.setComposite(old);
+		// The mark engraved faintly in the corner: lines only, so it never muddies what sits over it.
+		Sigil.engrave(g, w - 196, h - 206, 180, Theme.alpha(Theme.GOLD, 16));
 		g.setClip(null);
 		g.setStroke(new BasicStroke(1f));
 		g.setColor(Theme.alpha(Theme.GOLD, 190));
@@ -397,13 +396,13 @@ public final class RunCard
 		}
 	}
 
-	private static void centered(Graphics2D g, String text, int x, int w, int baseline, Color color)
+	static void centered(Graphics2D g, String text, int x, int w, int baseline, Color color)
 	{
 		FontMetrics fm = g.getFontMetrics();
 		Ui.shadowed(g, text, x + (w - fm.stringWidth(text)) / 2, baseline, color);
 	}
 
-	private static void rule(Graphics2D g, int x, int y, int w)
+	static void rule(Graphics2D g, int x, int y, int w)
 	{
 		g.setStroke(new BasicStroke(1f));
 		g.setPaint(new GradientPaint(x, 0, Theme.alpha(Theme.GOLD, 0), x + w / 2f, 0, Theme.alpha(Theme.GOLD, 150), true));
@@ -411,7 +410,7 @@ public final class RunCard
 		diamond(g, x + w / 2f, y, 3, Theme.GOLD);
 	}
 
-	private static void diamond(Graphics2D g, float cx, float cy, float r, Color color)
+	static void diamond(Graphics2D g, float cx, float cy, float r, Color color)
 	{
 		Path2D d = new Path2D.Float();
 		d.moveTo(cx, cy - r);

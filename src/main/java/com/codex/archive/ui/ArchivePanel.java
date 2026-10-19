@@ -80,6 +80,8 @@ public class ArchivePanel extends PluginPanel
 	private BiConsumer<BufferedImage, String> onSaveCard = (card, name) -> { };
 	/** A line under the run card's buttons, such as where it was saved; cleared when the run page moves on. */
 	private String cardNote;
+	/** Whether the note is about the session card, so it shows under that card's buttons. */
+	private boolean noteOnSession;
 	/** Whether run cards carry names, the character's and the party's; off for sharing them without. */
 	private boolean nameOnCard = true;
 	/** The state moved on while the panel was out of sight; the pages are built when it opens. */
@@ -182,6 +184,34 @@ public class ArchivePanel extends PluginPanel
 		rebuildRun();
 	}
 
+	/** The session card of a sitting, each run measured against the runs before it. */
+	BufferedImage sessionCard(Sessions.Session t)
+	{
+		return SessionCard.render(t, runs(), nameOnCard ? view.player : null, ZoneId.systemDefault());
+	}
+
+	private void saveSessionCard(Sessions.Session t)
+	{
+		noteOnSession = true;
+		onSaveCard.accept(sessionCard(t), "Fractured Archive session " + Format.fileDay(t.getStart()));
+	}
+
+	private void copySessionCard(Sessions.Session t)
+	{
+		noteOnSession = true;
+		String note;
+		try
+		{
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new ImageTransfer(sessionCard(t)), null);
+			note = "Session card copied. Paste it anywhere you share pictures.";
+		}
+		catch (IllegalStateException e)
+		{
+			note = "The clipboard is busy, try again in a moment.";
+		}
+		cardNote(note);
+	}
+
 	/** The run card of a run, measured against the runs of its party size before it. */
 	BufferedImage runCard(Run r)
 	{
@@ -190,12 +220,14 @@ public class ArchivePanel extends PluginPanel
 
 	private void saveCard(Run r)
 	{
+		noteOnSession = false;
 		onSaveCard.accept(runCard(r), "Fractured Archive " + Records.BUCKETS[Records.bucket(r.getTeamSize())].toLowerCase()
 			+ " " + Format.fileDay(r.getStartedAt()));
 	}
 
 	private void copyCard(Run r)
 	{
+		noteOnSession = false;
 		String note;
 		try
 		{
@@ -397,7 +429,7 @@ public class ArchivePanel extends PluginPanel
 			buttons.add(new CodexButton("Save run card", true, () -> saveCard(run)));
 			buttons.add(new CodexButton("Copy run card", false, () -> copyCard(run)));
 			stack.add(buttons);
-			if (cardNote != null)
+			if (cardNote != null && !noteOnSession)
 			{
 				stack.add(Ui.wrapped(cardNote, Theme.small(), Theme.TEAL, WIDTH - 16));
 			}
@@ -530,7 +562,7 @@ public class ArchivePanel extends PluginPanel
 			return "Level with your best through " + name + ".";
 		}
 		return d < 0 ? "Fastest yet through " + name + ", " + Format.span(-d) + " under the " + before[1] + (before[1] == 1 ? " clear" : " clears") + " before."
-			: Format.span(d) + " off your best through " + name + " (" + Format.ticks(before[0]) + ").";
+			: Format.span(d) + " behind your best through " + name + " (" + Format.ticks(before[0]) + ").";
 	}
 
 	/** Newest personal bests listed, routes listed, and bosses listed under where runs wipe. */
@@ -696,7 +728,7 @@ public class ArchivePanel extends PluginPanel
 		}
 
 		int inBucket = done + wiped + left;
-		String party = Records.BUCKETS[bucket].toLowerCase();
+		String party = Format.party(Records.BUCKETS[bucket]);
 		stack.add(new SectionHeader("Recent " + party + " runs", inBucket > HISTORY ? "latest " + HISTORY : null));
 		// Each row keeps its own height: a run whose route takes two lines must not stretch the rest.
 		Card history = new Card(new BorderLayout());
@@ -871,6 +903,16 @@ public class ArchivePanel extends PluginPanel
 			stack.add(Ui.wrapped("This session: " + String.join(" and ", parts) + ".", Theme.small(),
 				t.getPurples() > 0 ? Theme.PURPLE : Theme.GOLD, WIDTH - 16));
 		}
+		// The whole sitting as a picture, with every run of it.
+		JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 6, 0));
+		buttons.setOpaque(false);
+		buttons.add(new CodexButton("Save session card", true, () -> saveSessionCard(t)));
+		buttons.add(new CodexButton("Copy", false, () -> copySessionCard(t)));
+		stack.add(buttons);
+		if (cardNote != null && noteOnSession)
+		{
+			stack.add(Ui.wrapped(cardNote, Theme.small(), Theme.TEAL, WIDTH - 16));
+		}
 	}
 
 	/**
@@ -881,7 +923,7 @@ public class ArchivePanel extends PluginPanel
 	{
 		int ticks = view.archive.goal(bucket);
 		Goal g = Goal.of(runs, bucket, ticks);
-		String party = Records.BUCKETS[bucket].toLowerCase();
+		String party = Format.party(Records.BUCKETS[bucket]);
 		JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
 		buttons.setOpaque(false);
 		buttons.add(new CodexButton(g == null ? "Set a goal time" : "Change goal", g == null, () -> askGoal(bucket, ticks)));
@@ -942,7 +984,7 @@ public class ArchivePanel extends PluginPanel
 	/** Asks for a goal time, and passes on what was typed once it reads as a time. */
 	private void askGoal(int bucket, int current)
 	{
-		String party = Records.BUCKETS[bucket].toLowerCase();
+		String party = Format.party(Records.BUCKETS[bucket]);
 		Object answer = JOptionPane.showInputDialog(this, "Goal time for " + party + " runs, in minutes and seconds (for example 20:00):",
 			"Goal time", JOptionPane.PLAIN_MESSAGE, null, null, current > 0 ? Format.clock(current) : "");
 		if (answer == null)
@@ -1100,7 +1142,7 @@ public class ArchivePanel extends PluginPanel
 
 	private static String describe(Run r)
 	{
-		String party = Records.BUCKETS[Records.bucket(r.getTeamSize())].toLowerCase();
+		String party = Format.party(Records.BUCKETS[Records.bucket(r.getTeamSize())]);
 		if (r.isCompleted())
 		{
 			return Format.ticks(r.getTicks()) + " " + party + " clear";
