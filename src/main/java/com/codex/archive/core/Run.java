@@ -288,6 +288,14 @@ public class Run
 		{
 			used = new LinkedHashMap<>();
 		}
+		used.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null || e.getValue() < 0);
+		ticks = Math.max(0, ticks);
+		kc = Math.max(0, kc);
+		deaths = Math.max(0, deaths);
+		if (note != null && note.length() > NOTE_LENGTH)
+		{
+			note = note.substring(0, NOTE_LENGTH);
+		}
 		if (outcome == null)
 		{
 			outcome = Outcome.LEFT;
@@ -297,6 +305,14 @@ public class Run
 			crew = new ArrayList<>();
 		}
 		crew.removeIf(n -> n == null || n.isEmpty());
+		while (crew.size() > CREW)
+		{
+			crew.remove(crew.size() - 1);
+		}
+		if (unknown != null)
+		{
+			unknown.removeIf(n -> n == null);
+		}
 		return this;
 	}
 

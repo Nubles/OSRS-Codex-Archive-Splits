@@ -21,7 +21,6 @@ import com.codex.archive.ui.Format;
 import com.codex.archive.ui.Sigil;
 import com.codex.archive.ui.View;
 import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -85,6 +84,8 @@ public class CodexArchivePlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexArchivePlugin.class);
 	private static final String ARCHIVE_KEY = "archive";
+	/** Where a damaged save is set aside, as it was, before the archive read from it is saved over it. */
+	private static final String DAMAGED_KEY = "archiveDamaged";
 	/** How long after a clear uniques landing in the pack are still its loot, five minutes, or until the bank opens. */
 	private static final int LOOT_TICKS = 500;
 	/** How long the plaque keeps showing a clear while the player is still inside, half a minute. */
@@ -894,23 +895,15 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
-		try
+		String saved = configManager.getRSProfileConfiguration(CodexArchiveConfig.GROUP, ARCHIVE_KEY);
+		Archive.Loaded read = Archive.read(gson, saved);
+		if (read.damaged)
 		{
-			String saved = configManager.getRSProfileConfiguration(CodexArchiveConfig.GROUP, ARCHIVE_KEY);
-			if (saved != null && !saved.isEmpty())
-			{
-				Archive read = gson.fromJson(saved, Archive.class);
-				archive = read == null ? null : read.repair();
-			}
+			// The save as it was is kept aside before anything is written over it.
+			log.warn("The saved archive was damaged; kept what still reads and set the save as it was aside");
+			configManager.setConfiguration(CodexArchiveConfig.GROUP, profile, DAMAGED_KEY, saved);
 		}
-		catch (JsonParseException e)
-		{
-			log.warn("Could not read the saved archive, starting it afresh", e);
-		}
-		if (archive == null)
-		{
-			archive = new Archive();
-		}
+		archive = read.archive != null ? read.archive : new Archive();
 		unsaved = false;
 		shown = null;
 		dirty = true;
@@ -949,7 +942,7 @@ public class CodexArchivePlugin extends Plugin
 		}
 		else if (shown == null || changed)
 		{
-			shown = gson.fromJson(gson.toJson(archive), Archive.class).repair();
+			shown = archive.copy();
 		}
 		changed = false;
 		Archive copy = shown;

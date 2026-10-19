@@ -1,5 +1,11 @@
 package com.codex.archive.core;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -330,6 +336,163 @@ public class Archive
 		}
 	}
 
+	/** A saved archive as read back: what could be kept, and whether anything had to be left out. */
+	public static final class Loaded
+	{
+		/** The archive, or null when nothing in the save could be read at all. */
+		public final Archive archive;
+		/** True when the save was not read whole: a run, a purple or a figure in it was damaged. */
+		public final boolean damaged;
+
+		Loaded(Archive archive, boolean damaged)
+		{
+			this.archive = archive;
+			this.damaged = damaged;
+		}
+	}
+
+	/**
+	 * Reads a saved archive. A save that reads whole is repaired and kept; one that does not (a
+	 * run of the wrong shape, a figure too big for its field, a save cut short) keeps every run,
+	 * purple and figure that still reads, so one damaged run never costs the rest.
+	 */
+	public static Loaded read(Gson gson, String saved)
+	{
+		if (saved == null || saved.trim().isEmpty())
+		{
+			return new Loaded(new Archive(), false);
+		}
+		try
+		{
+			Archive whole = gson.fromJson(saved, Archive.class);
+			if (whole != null)
+			{
+				return new Loaded(whole.repair(), false);
+			}
+		}
+		catch (RuntimeException e)
+		{
+			// Read it piece by piece below.
+		}
+		return new Loaded(salvage(gson, saved), true);
+	}
+
+	/** Every piece of a damaged save that still reads, or null when none does. */
+	private static Archive salvage(Gson gson, String saved)
+	{
+		Archive a = new Archive();
+		boolean any = false;
+		JsonReader in = new JsonReader(new StringReader(saved));
+		in.setLenient(true);
+		try
+		{
+			if (in.peek() != JsonToken.BEGIN_OBJECT)
+			{
+				return null;
+			}
+			in.beginObject();
+			while (in.hasNext())
+			{
+				String name = in.nextName();
+				boolean list = "runs".equals(name) || "drops".equals(name);
+				if (list && in.peek() == JsonToken.BEGIN_ARRAY)
+				{
+					in.beginArray();
+					while (in.hasNext())
+					{
+						JsonElement item = gson.fromJson(in, JsonElement.class);
+						if ("runs".equals(name))
+						{
+							Run r = piece(gson, item, Run.class);
+							any |= r != null && a.runs.add(r);
+						}
+						else
+						{
+							Drop d = piece(gson, item, Drop.class);
+							any |= d != null && a.drops.add(d);
+						}
+					}
+					in.endArray();
+					continue;
+				}
+				JsonElement value = gson.fromJson(in, JsonElement.class);
+				any |= a.figure(gson, name, value);
+			}
+		}
+		catch (IOException | RuntimeException e)
+		{
+			// A save cut short keeps everything before the cut.
+		}
+		return any ? a.repair() : null;
+	}
+
+	/** One saved run or purple, or null when it does not read. */
+	private static <T> T piece(Gson gson, JsonElement item, Class<T> type)
+	{
+		try
+		{
+			return item == null || !item.isJsonObject() ? null : gson.fromJson(item, type);
+		}
+		catch (RuntimeException e)
+		{
+			return null;
+		}
+	}
+
+	/** Sets one of the archive's own figures from a damaged save, when it reads; true when it did. */
+	private boolean figure(Gson gson, String name, JsonElement value)
+	{
+		try
+		{
+			switch (name)
+			{
+				case "kc":
+					kc = gson.fromJson(value, int.class);
+					return true;
+				case "dry":
+					dry = gson.fromJson(value, int.class);
+					return true;
+				case "clears":
+					clears = gson.fromJson(value, int[].class);
+					return true;
+				case "wipes":
+					wipes = gson.fromJson(value, int[].class);
+					return true;
+				case "goals":
+					goals = gson.fromJson(value, int[].class);
+					return true;
+				default:
+					// A figure a later version keeps, unknown here.
+					return false;
+			}
+		}
+		catch (RuntimeException e)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * A copy to hand the panel, sharing nothing it could change: quicker on the client thread than
+	 * writing the archive out and reading it back, as the copy after each run once was.
+	 */
+	public Archive copy()
+	{
+		Archive a = new Archive();
+		for (Run r : runs)
+		{
+			a.runs.add(r.copy());
+		}
+		// A purple is never changed once logged, so the copy shares them.
+		a.drops.addAll(drops);
+		a.kc = kc;
+		a.dry = dry;
+		a.clears = clears == null ? null : clears.clone();
+		a.wipes = wipes == null ? null : wipes.clone();
+		a.goals = goals == null ? null : goals.clone();
+		return a;
+	}
+
 	public Archive repair()
 	{
 		if (runs == null)
@@ -346,6 +509,11 @@ public class Archive
 		kc = Math.max(0, kc);
 		dry = Math.max(0, dry);
 		ensureCounts();
+		for (int b = 0; b < clears.length; b++)
+		{
+			clears[b] = Math.max(0, clears[b]);
+			wipes[b] = Math.max(0, wipes[b]);
+		}
 		trim();
 		return this;
 	}
