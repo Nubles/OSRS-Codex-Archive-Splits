@@ -182,8 +182,12 @@ public class SplitTable extends JComponent
 			}
 			else if (bestRoom >= 0)
 			{
-				// What the room alone gave away against its best, apart from how the run stands overall.
-				sub += "  " + Format.delta(split.roomTicks(0) - bestRoom);
+				// What the room alone gave away against its best, apart from how the run stands overall;
+				// a long room and its delta close up rather than lose the delta's last figures.
+				String delta = Format.delta(split.roomTicks(0) - bestRoom);
+				sub = small.stringWidth(sub + "  " + delta) <= nameRoom ? sub + "  " + delta
+					: small.stringWidth(sub + " " + delta) <= nameRoom ? sub + " " + delta
+					: Format.ticks(split.roomTicks(0)) + " room " + delta;
 			}
 		}
 		else if (current)

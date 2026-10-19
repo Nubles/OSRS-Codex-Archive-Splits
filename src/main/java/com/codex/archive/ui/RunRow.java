@@ -8,6 +8,8 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.geom.Ellipse2D;
+import java.util.ArrayList;
+import java.util.List;
 import javax.swing.JComponent;
 
 /** One run in the history: when, which doors, the time and how it ended, with a purple gem when it gave a unique. */
@@ -26,7 +28,9 @@ class RunRow extends JComponent
 		this.bestTicks = bestTicks;
 		this.now = now;
 		setOpaque(false);
-		setPreferredSize(new Dimension(10, 32));
+		// A long route takes a second line of its own rather than being cut short.
+		setPreferredSize(new Dimension(10, routeLines(getFontMetrics(Theme.small()), ArchivePanel.WIDTH - 6 - (run.getPurple() != null ? 14 : 0)
+			- getFontMetrics(Theme.body()).stringWidth(timeText()) - 12).size() > 1 ? 44 : 32));
 		StringBuilder tip = new StringBuilder("<html>").append(Format.day(run.getStartedAt())).append(" at ")
 			.append(Format.time(run.getStartedAt())).append(run.getKc() > 0 ? ", completion " + Format.count(run.getKc()) : "");
 		if (run.getRole() != null)
@@ -44,6 +48,52 @@ class RunRow extends JComponent
 		setToolTipText(tip.append("</html>").toString());
 	}
 
+	/** The time on the right: the clear's time, or how the run ended. */
+	private String timeText()
+	{
+		if (run.getOutcome() == Outcome.COMPLETED)
+		{
+			return Format.ticks(run.getTicks());
+		}
+		return run.getOutcome() == Outcome.WIPED ? "Wiped" : "Left";
+	}
+
+	/**
+	 * The route on one line when it fits, else on two broken between doors, the second cut short
+	 * only if a single door's name is longer than the line.
+	 */
+	List<String> routeLines(FontMetrics fm, int width)
+	{
+		String route = run.route().isEmpty() ? "Guardian" : run.route();
+		List<String> lines = new ArrayList<>();
+		if (fm.stringWidth(route) <= width)
+		{
+			lines.add(route);
+			return lines;
+		}
+		String[] doors = route.split(", ");
+		StringBuilder first = new StringBuilder(doors[0]);
+		int i = 1;
+		while (i < doors.length && fm.stringWidth(first + ", " + doors[i] + ",") <= width)
+		{
+			first.append(", ").append(doors[i]);
+			i++;
+		}
+		if (i >= doors.length)
+		{
+			lines.add(first.toString());
+			return lines;
+		}
+		lines.add(Ui.clip(first + ",", fm, width));
+		StringBuilder rest = new StringBuilder(doors[i]);
+		for (int k = i + 1; k < doors.length; k++)
+		{
+			rest.append(", ").append(doors[k]);
+		}
+		lines.add(rest.toString());
+		return lines;
+	}
+
 	@Override
 	protected void paintComponent(Graphics graphics)
 	{
@@ -59,16 +109,14 @@ class RunRow extends JComponent
 		g.setFont(Theme.body());
 		FontMetrics body = g.getFontMetrics();
 
-		String time;
+		String time = timeText();
 		Color color;
 		if (run.getOutcome() == Outcome.COMPLETED)
 		{
-			time = Format.ticks(run.getTicks());
 			color = best ? Theme.GOLD_BRIGHT : Theme.TEXT;
 		}
 		else
 		{
-			time = run.getOutcome() == Outcome.WIPED ? "Wiped" : "Left";
 			color = run.getOutcome() == Outcome.WIPED ? Theme.BLOOD : Theme.TEXT_MUTED;
 		}
 		int tw = body.stringWidth(time);
@@ -92,7 +140,7 @@ class RunRow extends JComponent
 			note = "at " + Format.ticks(run.getTicks());
 		}
 		g.setColor(noteColor);
-		g.drawString(note, w - 6 - small.stringWidth(note), h - 6);
+		g.drawString(note, w - 6 - small.stringWidth(note), h > 32 ? 27 : h - 6);
 
 		int x = 6;
 		if (run.getPurple() != null)
@@ -105,8 +153,13 @@ class RunRow extends JComponent
 			x += 14;
 		}
 		g.setFont(Theme.small());
-		String route = run.route().isEmpty() ? "Guardian" : run.route();
-		Ui.shadowed(g, Ui.clip(route, small, w - x - tw - 12), x, 14, Theme.TEXT);
+		List<String> route = routeLines(small, w - x - tw - 12);
+		Ui.shadowed(g, route.get(0), x, 14, Theme.TEXT);
+		if (route.size() > 1)
+		{
+			// The second line runs beside the note under the time, so it stops short of it.
+			Ui.shadowed(g, Ui.clip(route.get(1), small, w - x - Math.max(tw, small.stringWidth(note)) - 12), x, 27, Theme.TEXT);
+		}
 		g.setFont(Theme.small());
 		g.setColor(Theme.TEXT_FAINT);
 		String when = Format.ago(now - run.getStartedAt());
@@ -123,7 +176,8 @@ class RunRow extends JComponent
 			when = run.getPurple() + ", " + when;
 			g.setColor(Theme.mix(Theme.PURPLE, Theme.TEXT_FAINT, 0.3));
 		}
-		g.drawString(Ui.clip(when, small, w - x - 70), x, h - 6);
+		// On a two-line route the note sits beside the route, so this last line has the row to itself.
+		g.drawString(Ui.clip(when, small, h > 32 ? w - x - 6 : w - x - 70), x, h - 6);
 		g.dispose();
 	}
 }

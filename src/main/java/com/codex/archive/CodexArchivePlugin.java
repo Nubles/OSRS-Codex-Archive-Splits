@@ -231,7 +231,15 @@ public class CodexArchivePlugin extends Plugin
 		{
 			try
 			{
-				if (save())
+				// Closing the client mid-run logs out of it, as the logout screen would: what was timed is kept.
+				boolean wrote = false;
+				if (tracker.isActive())
+				{
+					endRun();
+					wrote = true;
+				}
+				wrote |= save();
+				if (wrote)
 				{
 					configManager.sendConfig();
 				}
@@ -279,6 +287,12 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
 	{
+		if (tracker.isActive())
+		{
+			// The account is changing under a run, as on logging out before the login screen shows:
+			// the run belongs to the account it was timed on, so it is put away there first.
+			endRun();
+		}
 		save();
 		loadProfile();
 		publish();
@@ -333,11 +347,17 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
+		String name = npc.getName() == null ? null : Text.removeTags(npc.getName());
 		Encounter encounter = tracker.resolve(npc.getName(), npc.getCombatLevel());
 		if (encounter != null)
 		{
-			tracker.engage(encounter, tick);
+			tracker.engage(encounter, tick, name, npc.getCombatLevel());
 			dirty = true;
+		}
+		else
+		{
+			// Kept so a boss that goes unrecognised can show what the run did see.
+			tracker.foe(name, npc.getCombatLevel());
 		}
 	}
 

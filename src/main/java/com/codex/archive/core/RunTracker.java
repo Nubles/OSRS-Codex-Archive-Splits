@@ -49,6 +49,10 @@ public class RunTracker
 	private final List<String> purples = new ArrayList<>();
 	private final Map<Supply, Integer> last = new EnumMap<>(Supply.class);
 	private final Map<Supply, Integer> used = new EnumMap<>(Supply.class);
+	/** Hits on big NPCs that matched no boss, by "Name (level)", in the order first hit. */
+	private final Map<String, Integer> foes = new LinkedHashMap<>();
+	/** Most different unrecognised NPCs counted in one run, so a room full of adds cannot grow it without end. */
+	private static final int FOES = 12;
 
 	/** Starts a run. Any run already going is dropped, as the client can only be in one. */
 	public void begin(long now, int tick, int teamSize, Map<Supply, Integer> pack)
@@ -69,6 +73,7 @@ public class RunTracker
 		purples.clear();
 		last.clear();
 		used.clear();
+		foes.clear();
 		if (pack != null)
 		{
 			last.putAll(pack);
@@ -169,8 +174,34 @@ public class RunTracker
 			&& lastClosed.getEncounter().getRow() == nextRow() - 1;
 	}
 
+	/**
+	 * A big NPC was hit that is no boss of this run, as far as the names go. Kept so a run whose
+	 * boss went unrecognised can show what it did see.
+	 */
+	public void foe(String npcName, int combatLevel)
+	{
+		if (run == null || npcName == null || npcName.isEmpty() || combatLevel < UNNAMED_BOSS_LEVEL)
+		{
+			return;
+		}
+		String key = (npcName.length() > 40 ? npcName.substring(0, 40) : npcName) + " (" + combatLevel + ")";
+		if (foes.containsKey(key) || foes.size() < FOES)
+		{
+			foes.merge(key, 1, Integer::sum);
+		}
+	}
+
 	/** A boss was hit, or seen fighting. The first time opens its split. */
 	public void engage(Encounter encounter, int tick)
+	{
+		engage(encounter, tick, null, 0);
+	}
+
+	/**
+	 * @param npcName the NPC hit, so a boss told by its row and size notes what it was told from
+	 * @param combatLevel that NPC's combat level
+	 */
+	public void engage(Encounter encounter, int tick, String npcName, int combatLevel)
 	{
 		if (run == null || encounter == null || announced)
 		{
@@ -221,6 +252,10 @@ public class RunTracker
 		}
 		open = new Split(encounter, lastEnd, t);
 		guessed = encounter.isUnnamed();
+		if (npcName != null && Encounter.byName(npcName) != encounter)
+		{
+			open.guessedFrom(npcName, combatLevel);
+		}
 		run.splitsMutable().add(open);
 	}
 
@@ -407,6 +442,15 @@ public class RunTracker
 		int ticks = finalTick >= 0 ? finalTick : Math.max(0, tick - base);
 		run.splitsMutable().removeIf(s -> !s.isDone() && outcome == Outcome.COMPLETED);
 		run.finish(outcome, ticks, deaths, usedByTitle());
+		List<Map.Entry<String, Integer>> seen = new ArrayList<>(foes.entrySet());
+		// The most hit first; the sort keeps first-hit order on a tie.
+		seen.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+		List<String> names = new ArrayList<>();
+		for (Map.Entry<String, Integer> e : seen)
+		{
+			names.add(e.getKey());
+		}
+		run.setUnknown(names);
 		Run done = run;
 		run = null;
 		open = null;

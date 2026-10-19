@@ -35,6 +35,13 @@ public class Run
 	private String role;
 	/** The player's own note on the run, or null. */
 	private String note;
+	/**
+	 * Big NPCs fought in the run that matched no boss, as "Name (level)", the most hit first;
+	 * null when there were none. They show what the run saw when a boss was not recognised.
+	 */
+	private List<String> unknown;
+	/** Most unrecognised NPCs kept for one run. */
+	public static final int UNKNOWN = 4;
 
 	public Run()
 	{
@@ -104,6 +111,41 @@ public class Run
 	public String getNote()
 	{
 		return note;
+	}
+
+	/** Big NPCs fought that matched no boss, "Name (level)", the most hit first. */
+	public List<String> getUnknown()
+	{
+		return unknown == null ? Collections.emptyList() : Collections.unmodifiableList(unknown);
+	}
+
+	void setUnknown(List<String> names)
+	{
+		unknown = names == null || names.isEmpty() ? null : new ArrayList<>(names.subList(0, Math.min(UNKNOWN, names.size())));
+	}
+
+	/** Whether any boss of the run was guessed, or was not recognised at all. */
+	public boolean hasDoubts()
+	{
+		for (Split s : splits)
+		{
+			if (s.getSeen() != null)
+			{
+				return true;
+			}
+		}
+		// Unrecognised foes matter only when a boss went untimed: an add in a timed room is no doubt.
+		return !getUnknown().isEmpty() && splits.size() < Encounter.ROWS;
+	}
+
+	/** Forgets the detection notes, which only matter while the run is fresh. */
+	void forgetDoubts()
+	{
+		unknown = null;
+		for (Split s : splits)
+		{
+			s.forgetSeen();
+		}
 	}
 
 	/** Adds a raider seen in the run, keeping the first few distinct names. */
@@ -257,6 +299,7 @@ public class Run
 		r.crew = new ArrayList<>(getCrew());
 		r.role = role;
 		r.note = note;
+		r.unknown = unknown == null ? null : new ArrayList<>(unknown);
 		return r;
 	}
 }

@@ -2,6 +2,7 @@ package com.codex.archive.ui;
 
 import com.codex.archive.core.Archive;
 import com.codex.archive.core.Comparison;
+import com.codex.archive.core.Doubts;
 import com.codex.archive.core.Drop;
 import com.codex.archive.core.Encounter;
 import com.codex.archive.core.Goal;
@@ -298,6 +299,11 @@ public class ArchivePanel extends PluginPanel
 			if (route != null)
 			{
 				stack.add(Ui.wrapped(route, Theme.small(), Theme.TEXT_MUTED, WIDTH - 16));
+			}
+			List<String> doubts = Doubts.of(run);
+			if (!doubts.isEmpty())
+			{
+				stack.add(doubts(doubts));
 			}
 		}
 		Map<Supply, Integer> used = used(run);
@@ -1025,6 +1031,22 @@ public class ArchivePanel extends PluginPanel
 		row.add(left, BorderLayout.CENTER);
 		row.add(Ui.label(after, Theme.small(), Theme.TEXT_MUTED), BorderLayout.EAST);
 		return row;
+	}
+
+	/** What a run's times rest on when a boss was guessed or missed, and how to put a wrong run right. */
+	private static JComponent doubts(List<String> lines)
+	{
+		Card card = new Card(new BorderLayout(0, 4));
+		card.accent(Theme.EMBER);
+		card.add(Ui.label("Check this run", Theme.body(), Theme.EMBER), BorderLayout.NORTH);
+		StackPanel body = new StackPanel(3, 0);
+		for (String line : lines)
+		{
+			body.add(Ui.wrapped(line, Theme.small(), Theme.TEXT_MUTED, WIDTH - 30));
+		}
+		body.add(Ui.wrapped("If a time is wrong, right-click the run under Records to delete it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 30));
+		card.add(body, BorderLayout.CENTER);
+		return card;
 	}
 
 	private static JComponent note(String title, String body)

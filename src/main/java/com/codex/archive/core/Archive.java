@@ -16,6 +16,8 @@ public class Archive
 	 * personal best is never lost to age. Clears and wipes are counted apart, so they never drop.
 	 */
 	public static final int MAX_RUNS = 500;
+	/** The latest runs that keep what each boss was told from; older runs keep only their times. */
+	public static final int DOUBT_RUNS = 30;
 	/** How long after a run its loot still counts as that run's, ten minutes. */
 	private static final long LOOT_WINDOW_MS = 10 * 60_000L;
 
@@ -305,6 +307,11 @@ public class Archive
 	/** Lets the oldest runs go past the limit, keeping every run that holds a record. */
 	private void trim()
 	{
+		// What each guess rested on matters while a run is fresh; older runs keep only their times.
+		for (int i = 0; i < runs.size() - DOUBT_RUNS; i++)
+		{
+			runs.get(i).forgetDoubts();
+		}
 		if (runs.size() <= MAX_RUNS)
 		{
 			return;
