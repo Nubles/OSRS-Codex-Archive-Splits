@@ -256,7 +256,9 @@ public final class SessionCard
 			y += 8;
 		}
 
-		String verdict = verdict(s, all);
+		g.setFont(Theme.body());
+		// A long unique's name still leaves the ribbon its ends inside the page.
+		String verdict = Ui.clip(verdict(s, all), g.getFontMetrics(), w - 40);
 		Color ribbon = verdict.startsWith("A purple") || verdict.contains("purples") ? Theme.PURPLE
 			: s.getBests() > 0 ? Theme.GOLD_BRIGHT : s.getClears() == 0 ? Theme.EMBER : Theme.TEXT_MUTED;
 		RunCard.ribbon(g, verdict, ribbon, x + w / 2, y);
