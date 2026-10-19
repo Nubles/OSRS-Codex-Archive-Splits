@@ -137,8 +137,9 @@ public final class SessionCard
 		}
 		if (s.getClears() == 0)
 		{
+			// The big figure already says No clear; the ribbon says how far the sitting got instead.
 			String furthest = furthest(s);
-			return furthest == null ? "No clear yet" : "Furthest: " + furthest;
+			return furthest == null ? "A session in the archive" : "Furthest: " + furthest;
 		}
 		Run best = bestRun(s);
 		Integer delta = best == null ? null : Standing.of(all, best).totalDelta();
@@ -149,7 +150,10 @@ public final class SessionCard
 		return s.getWipes() == 0 ? "Every run cleared" : "A session in the archive";
 	}
 
-	/** The deepest boss the sitting's runs reached, by its short name, or null. */
+	/**
+	 * The deepest boss the sitting's runs reached, by its full name, or null: a short name such as
+	 * "Trio" reads as a party size on a duo's card.
+	 */
 	static String furthest(Sessions.Session s)
 	{
 		int deepest = -1;
@@ -163,7 +167,8 @@ public final class SessionCard
 				if (sp != null && sp.getEncounter() != null && sp.getEncounter().getRow() == row && row > deepest)
 				{
 					deepest = row;
-					name = sp.getEncounter().getShortName();
+					String title = sp.getEncounter().getTitle();
+					name = title.startsWith("The ") ? "the " + title.substring(4) : title;
 				}
 			}
 		}
@@ -182,6 +187,77 @@ public final class SessionCard
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * The runs the card draws, by their place in the sitting: every run when they fit, else the
+	 * latest, with the sitting's best clear kept among them so the big figure is always one drawn.
+	 */
+	static List<Integer> shown(List<Row> rows, Run best)
+	{
+		List<Integer> out = new ArrayList<>();
+		int from = Math.max(0, rows.size() - RUNS);
+		int bestAt = -1;
+		for (int i = 0; i < from; i++)
+		{
+			bestAt = rows.get(i).run == best ? i : bestAt;
+		}
+		if (bestAt >= 0)
+		{
+			out.add(bestAt);
+			from++;
+		}
+		for (int i = from; i < rows.size(); i++)
+		{
+			out.add(i);
+		}
+		return out;
+	}
+
+	/** The slowest clear among the runs drawn, the end of every bar; 0 with none. */
+	static int slowest(List<Row> rows, List<Integer> shown)
+	{
+		int slowest = 0;
+		for (int i : shown)
+		{
+			Run r = rows.get(i).run;
+			slowest = r.isCompleted() ? Math.max(slowest, r.getTicks()) : slowest;
+		}
+		return slowest;
+	}
+
+	/**
+	 * The three figures beneath the runs, each {value, label, line beneath}: the average clear, the
+	 * pace and the time between runs; with no clear, the bosses the runs felled and how long a run
+	 * lasted in place of the first two, so the card never says No clear again.
+	 */
+	static String[][] tiles(Sessions.Session s)
+	{
+		String[] downtime = {s.getBetween() < 0 ? "-" : Format.clock((int) (s.getBetween() / 600)), "Downtime",
+			s.getBetween() < 0 ? "one run" : "between runs"};
+		if (s.getClears() == 0)
+		{
+			int felled = 0;
+			long ticks = 0;
+			for (Run r : s.getCounted())
+			{
+				for (Split sp : r.getSplits())
+				{
+					felled += sp.isDone() ? 1 : 0;
+				}
+				ticks += Math.max(0, r.getTicks());
+			}
+			int runs = Math.max(1, s.getCounted().size());
+			return new String[][]{
+				{String.valueOf(felled), "Bosses", "felled"},
+				{Format.ticks((int) (ticks / runs)), "A run", "on average"},
+				downtime};
+		}
+		double pace = s.perHour();
+		return new String[][]{
+			{s.getAverage() < 0 ? "-" : Format.ticks(s.getAverage()), "Average", "a clear"},
+			{pace > 0 ? String.format(Locale.ENGLISH, "%.1f", pace) : "-", "An hour", pace > 0 ? "clears" : "too short to tell"},
+			downtime};
 	}
 
 	/** "4 clears, 1 wipe", "1 clear, no wipes". */
@@ -265,7 +341,7 @@ public final class SessionCard
 		y += 24;
 
 		g.setFont(Theme.small());
-		String when = Instant.ofEpochMilli(s.getStart()).atZone(zone).format(DATE) + ", " + Format.time(s.getStart()) + " to " + Format.time(s.getEnd());
+		String when = Instant.ofEpochMilli(s.getStart()).atZone(zone).format(DATE) + ", " + Format.time(s.getStart(), zone) + " to " + Format.time(s.getEnd(), zone);
 		String party = party(s);
 		String line = party.isEmpty() ? when : party + " · " + when;
 		RunCard.centered(g, Ui.clip(line, small, w), x, w, y + small.getAscent(), Theme.TEXT_MUTED);
@@ -290,24 +366,25 @@ public final class SessionCard
 		g.drawString(tally, x + w - small.stringWidth(tally), y + small.getAscent());
 		y += small.getHeight() + 6;
 
-		int slowest = 0;
-		for (Row r : rows)
-		{
-			slowest = r.run.isCompleted() ? Math.max(slowest, r.run.getTicks()) : slowest;
-		}
-		int from = Math.max(0, rows.size() - RUNS);
-		if (from > 0)
-		{
-			String earlier = from + (from == 1 ? " earlier run" : " earlier runs") + " not shown";
-			RunCard.centered(g, earlier, x, w, y + small.getAscent(), Theme.TEXT_FAINT);
-			y += small.getHeight() + 2;
-		}
+		List<Integer> shown = shown(rows, best);
+		int slowest = slowest(rows, shown);
 		g.setFont(Theme.body());
 		FontMetrics body = g.getFontMetrics();
 		int numW = small.stringWidth("00") + 6;
 		int timeW = body.stringWidth("00:00.0") + 8;
-		for (int i = from; i < rows.size(); i++)
+		for (int k = 0; k < shown.size(); k++)
 		{
+			int i = shown.get(k);
+			int prev = k == 0 ? -1 : shown.get(k - 1);
+			if (i - prev > 1)
+			{
+				// Where runs are left off, one line says how many, in their place.
+				int gap = i - prev - 1;
+				g.setFont(Theme.small());
+				String earlier = gap + (gap == 1 ? (prev < 0 ? " earlier run" : " run") : (prev < 0 ? " earlier runs" : " runs")) + " not shown";
+				RunCard.centered(g, earlier, x, w, y + small.getAscent(), Theme.TEXT_FAINT);
+				y += small.getHeight() + 2;
+			}
 			Row r = rows.get(i);
 			int mid = y + ROW / 2;
 			g.setFont(Theme.small());
@@ -362,11 +439,10 @@ public final class SessionCard
 		// Three figures beneath: the average clear, the pace and the time between runs.
 		int tileW = (w - 12) / 3;
 		int tileH = 50;
-		StatTile.paint(g, s.getAverage() < 0 ? "-" : Format.ticks(s.getAverage()), "Average", "a clear", Theme.TEXT, x, y, tileW, tileH);
-		StatTile.paint(g, s.perHour() > 0 ? String.format(Locale.ENGLISH, "%.1f", s.perHour()) : "-", "An hour",
-			s.perHour() > 0 ? "clears" : s.getClears() == 0 ? "no clear yet" : "too short to tell", Theme.TEAL, x + tileW + 6, y, tileW, tileH);
-		StatTile.paint(g, s.getBetween() < 0 ? "-" : Format.clock((int) (s.getBetween() / 600)), "Downtime",
-			s.getBetween() < 0 ? "one run" : "between runs", Theme.TEXT, x + (tileW + 6) * 2, y, w - (tileW + 6) * 2, tileH);
+		String[][] tiles = tiles(s);
+		StatTile.paint(g, tiles[0][0], tiles[0][1], tiles[0][2], Theme.TEXT, x, y, tileW, tileH);
+		StatTile.paint(g, tiles[1][0], tiles[1][1], tiles[1][2], Theme.TEAL, x + tileW + 6, y, tileW, tileH);
+		StatTile.paint(g, tiles[2][0], tiles[2][1], tiles[2][2], Theme.TEXT, x + (tileW + 6) * 2, y, w - (tileW + 6) * 2, tileH);
 		y += tileH + 10;
 
 		RunCard.rule(g, x, y, w);
@@ -374,16 +450,19 @@ public final class SessionCard
 		g.setFont(Theme.small());
 		g.setColor(Theme.TEXT_FAINT);
 		g.drawString("Codex Archive Splits for RuneLite", x, y + small.getAscent());
-		String span = hours(s.getEnd() - s.getStart()) + " at the archive";
+		String span = span(s.getStart(), s.getEnd()) + " at the archive";
 		g.drawString(span, x + w - small.stringWidth(span), y + small.getAscent());
 		y += small.getHeight();
 		return y + PAD;
 	}
 
-	/** "1h 35m", "48m". */
-	static String hours(long ms)
+	/**
+	 * "1h 35m", "48m": the minutes between the two clock times the card prints, so 15:04 to 16:15
+	 * is 1h 11m however many seconds either end held.
+	 */
+	static String span(long start, long end)
 	{
-		long minutes = Math.max(1, ms / 60_000);
+		long minutes = Math.max(1, Math.floorDiv(end, 60_000L) - Math.floorDiv(start, 60_000L));
 		return minutes < 60 ? minutes + "m" : minutes / 60 + "h " + minutes % 60 + "m";
 	}
 

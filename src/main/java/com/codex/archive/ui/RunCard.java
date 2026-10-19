@@ -267,7 +267,9 @@ public final class RunCard
 				Split s = run.split(row);
 				last = s != null && s.getEncounter() != null && s.getEncounter().getRow() == run.reached() ? s : last;
 			}
-			String where = last != null ? last.getEncounter().getShortName() : run.reached() < Encounter.ROWS ? Encounter.rowLabel(run.reached()) : null;
+			// "The Trio" on its own would read as a party size beside a duo's or a trio's runs.
+			String where = last == null ? (run.reached() < Encounter.ROWS ? Encounter.rowLabel(run.reached()) : null)
+				: last.getEncounter() == Encounter.TRIO ? "the Trio" : last.getEncounter().getShortName();
 			return (run.getOutcome() == Outcome.WIPED ? "Wiped" : "Left") + (where == null ? "" : " at " + where);
 		}
 		if (st.isFirstClear())

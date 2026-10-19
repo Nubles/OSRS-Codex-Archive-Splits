@@ -127,7 +127,13 @@ public final class Format
 	/** "14:02". */
 	public static String time(long epochMs)
 	{
-		return CLOCK.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()));
+		return time(epochMs, ZoneId.systemDefault());
+	}
+
+	/** The clock time in a zone, so a card's times agree with its date. */
+	public static String time(long epochMs, ZoneId zone)
+	{
+		return CLOCK.format(Instant.ofEpochMilli(epochMs).atZone(zone));
 	}
 
 	/** "1st", "2nd", "11th", "23rd". */

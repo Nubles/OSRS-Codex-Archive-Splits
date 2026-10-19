@@ -10,9 +10,14 @@ public final class StandingTestRuns
 	/** A run started at a moment, with each boss falling at the given ticks; fewer falls and wiped, a wipe. */
 	public static Run run(long at, int team, boolean wiped, int... falls)
 	{
+		return via(new Encounter[]{Encounter.GUARDIAN, Encounter.BORK, Encounter.DREADNOTH, Encounter.XARTH, Encounter.HOODED_FIGURE}, at, team, wiped, falls);
+	}
+
+	/** As {@link #run}, through the doors given. */
+	public static Run via(Encounter[] route, long at, int team, boolean wiped, int... falls)
+	{
 		RunTracker t = new RunTracker();
 		t.begin(at, 0, team, null);
-		Encounter[] route = {Encounter.GUARDIAN, Encounter.BORK, Encounter.DREADNOTH, Encounter.XARTH, Encounter.HOODED_FIGURE};
 		int prev = 0;
 		for (int i = 0; i < falls.length; i++)
 		{
