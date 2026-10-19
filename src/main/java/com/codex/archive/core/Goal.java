@@ -132,7 +132,8 @@ public final class Goal
 	}
 
 	/**
-	 * Parses a time the player typed: "20:00", "19:42.6", "1:02:30" or plain seconds.
+	 * Parses a time the player typed: "20:00", "19:42.6", "1:02:30", or a bare number of minutes
+	 * ("20"), since the prompt asks for minutes and a raid goal is never a matter of seconds.
 	 *
 	 * @return ticks, rounded to the nearest, or -1 when it is not a time
 	 */
@@ -164,6 +165,10 @@ public final class Goal
 		catch (NumberFormatException e)
 		{
 			return -1;
+		}
+		if (parts.length == 1)
+		{
+			seconds *= 60;
 		}
 		int ticks = (int) Math.round(seconds / 0.6);
 		return ticks > 0 ? ticks : -1;

@@ -97,12 +97,30 @@ public class GoalAndSessionsTest
 	}
 
 	@Test
+	public void theLiveMarksAndTheGoalCardShareTheGoalAlike()
+	{
+		List<Run> runs = new ArrayList<>(history());
+		for (int i = 4; i <= 6; i++)
+		{
+			runs.add(run(i, 3, ROUTE, 120, 240, 420, 540, 660));
+		}
+		// The goal card says what each room is allowed; the splits must race those same marks.
+		Comparison c = Comparison.of(runs, 2, Comparison.Mode.GOAL, null, 450);
+		for (Goal.Row r : Goal.of(runs, 2, 450).getRows())
+		{
+			assertEquals("row " + r.row, r.allowed, c.room(r.row));
+		}
+	}
+
+	@Test
 	public void goalTimesAreReadAsPlayersWriteThem()
 	{
 		assertEquals(2000, Goal.parse("20:00"));
 		assertEquals(Math.round((19 * 60 + 42.6) / 0.6), Goal.parse(" 19:42.6 "));
 		assertEquals(6250, Goal.parse("1:02:30"));
-		assertEquals(150, Goal.parse("90"));
+		// A bare number is minutes, as the prompt asks for: "20" means twenty minutes, not seconds.
+		assertEquals(2000, Goal.parse("20"));
+		assertEquals(2050, Goal.parse("20.5"));
 		assertEquals(-1, Goal.parse("20:75"));
 		assertEquals(-1, Goal.parse("twenty"));
 		assertEquals(-1, Goal.parse("0:00"));

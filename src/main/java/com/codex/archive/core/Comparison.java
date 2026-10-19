@@ -9,7 +9,7 @@ import java.util.List;
  * classic mark; your best rooms strung together is the run of a perfect day; your typical run
  * (the median of each room over recent clears) says whether today is a good day or a bad one.
  * A goal time is the run you are working towards: its total set by the player, shared out among
- * the rooms in the proportions your own runs take, so each boss has a mark on the way.
+ * the rooms in the proportions of your best rooms, so each boss has a mark on the way.
  */
 public final class Comparison
 {
@@ -141,14 +141,15 @@ public final class Comparison
 	}
 
 	/**
-	 * A goal time shared out among the rooms: in the proportions of your typical run when every row
-	 * has one, else of your best rooms, else of your best run. Rounded so the rooms add up to the
+	 * A goal time shared out among the rooms: in the proportions of your best rooms when every row
+	 * has one, else of your best run. The goal card uses the same shape, so the marks raced here are
+	 * the rooms it says the goal allows. Rounded so the rooms add up to the
 	 * goal exactly. With no runs to take a shape from, only the whole run has a mark.
 	 */
 	private static Comparison goal(List<Run> runs, int bucket, Run exclude, int goal)
 	{
 		int[] shape = null;
-		for (Mode m : new Mode[]{Mode.TYPICAL, Mode.BEST_ROOMS, Mode.PERSONAL_BEST})
+		for (Mode m : new Mode[]{Mode.BEST_ROOMS, Mode.PERSONAL_BEST})
 		{
 			Comparison c = of(runs, bucket, m, exclude, 0);
 			int[] rooms = new int[Encounter.ROWS];
