@@ -593,8 +593,11 @@ public class ArchivePanel extends PluginPanel
 		int inBucket = done + wiped + left;
 		String party = Records.BUCKETS[bucket].toLowerCase();
 		stack.add(new SectionHeader("Recent " + party + " runs", inBucket > HISTORY ? "latest " + HISTORY : null));
-		Card history = new Card(new GridLayout(0, 1, 0, 0));
+		// Each row keeps its own height: a run whose route takes two lines must not stretch the rest.
+		Card history = new Card(new BorderLayout());
 		history.setBorder(new EmptyBorder(2, 4, 2, 4));
+		StackPanel historyRows = new StackPanel(0, 0);
+		history.add(historyRows, BorderLayout.CENTER);
 		int shown = 0;
 		for (int i = runs.size() - 1; i >= 0 && shown < HISTORY; i--)
 		{
@@ -605,13 +608,13 @@ public class ArchivePanel extends PluginPanel
 			}
 			RunRow row = new RunRow(r, r == best, best == null ? -1 : best.getTicks(), view.now);
 			row.setComponentPopupMenu(runMenu(r, bucket));
-			history.add(row);
+			historyRows.add(row);
 			shown++;
 		}
 		if (shown == 0)
 		{
 			history.setBorder(new EmptyBorder(8, 10, 8, 10));
-			history.add(Ui.wrapped(runs.isEmpty() ? "Your runs appear here as you finish them."
+			historyRows.add(Ui.wrapped(runs.isEmpty() ? "Your runs appear here as you finish them."
 				: "No " + party + " runs yet. Pick another party size above.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 24));
 		}
 		stack.add(history);

@@ -15,6 +15,13 @@ import javax.swing.JComponent;
 /** One run in the history: when, which doors, the time and how it ended, with a purple gem when it gave a unique. */
 class RunRow extends JComponent
 {
+	/**
+	 * The width a row gets in the Records card: the sidebar, less its scroll bar, the page's
+	 * gutters and the card's own edge. A long page always scrolls, so the scroll bar is counted.
+	 */
+	private static final int ROW_WIDTH = 225 - 8 - 2 * Theme.GUTTER - 8;
+	private static final int SHORT = 32;
+	private static final int TALL = 44;
 	private final Run run;
 	private final boolean best;
 	/** The party size's best time, for the gap under each clear; -1 with none. */
@@ -29,8 +36,8 @@ class RunRow extends JComponent
 		this.now = now;
 		setOpaque(false);
 		// A long route takes a second line of its own rather than being cut short.
-		setPreferredSize(new Dimension(10, routeLines(getFontMetrics(Theme.small()), ArchivePanel.WIDTH - 6 - (run.getPurple() != null ? 14 : 0)
-			- getFontMetrics(Theme.body()).stringWidth(timeText()) - 12).size() > 1 ? 44 : 32));
+		// A first guess at the width; once the row is laid out it measures again at its real width.
+		setPreferredSize(new Dimension(10, heightAt(ROW_WIDTH)));
 		StringBuilder tip = new StringBuilder("<html>").append(Format.day(run.getStartedAt())).append(" at ")
 			.append(Format.time(run.getStartedAt())).append(run.getKc() > 0 ? ", completion " + Format.count(run.getKc()) : "");
 		if (run.getRole() != null)
@@ -46,6 +53,26 @@ class RunRow extends JComponent
 			tip.append("<br>").append(Ui.escape(run.getNote()));
 		}
 		setToolTipText(tip.append("</html>").toString());
+	}
+
+	/** Two lines when the route does not fit beside the time at this width, one when it does. */
+	private int heightAt(int width)
+	{
+		int room = width - 6 - (run.getPurple() != null ? 14 : 0) - getFontMetrics(Theme.body()).stringWidth(timeText()) - 12;
+		return routeLines(getFontMetrics(Theme.small()), room).size() > 1 ? TALL : SHORT;
+	}
+
+	@Override
+	public void setBounds(int x, int y, int width, int height)
+	{
+		super.setBounds(x, y, width, height);
+		int want = width > 0 ? heightAt(width) : getPreferredSize().height;
+		if (want != getPreferredSize().height)
+		{
+			// The guess was wrong for the width the row really got: take the right height at the next layout.
+			setPreferredSize(new Dimension(10, want));
+			revalidate();
+		}
 	}
 
 	/** The time on the right: the clear's time, or how the run ended. */
@@ -140,7 +167,7 @@ class RunRow extends JComponent
 			note = "at " + Format.ticks(run.getTicks());
 		}
 		g.setColor(noteColor);
-		g.drawString(note, w - 6 - small.stringWidth(note), h > 32 ? 27 : h - 6);
+		g.drawString(note, w - 6 - small.stringWidth(note), h >= TALL ? 27 : h - 6);
 
 		int x = 6;
 		if (run.getPurple() != null)
@@ -153,7 +180,8 @@ class RunRow extends JComponent
 			x += 14;
 		}
 		g.setFont(Theme.small());
-		List<String> route = routeLines(small, w - x - tw - 12);
+		List<String> route = h >= TALL ? routeLines(small, w - x - tw - 12)
+			: java.util.Collections.singletonList(Ui.clip(run.route().isEmpty() ? "Guardian" : run.route(), small, w - x - tw - 12));
 		Ui.shadowed(g, route.get(0), x, 14, Theme.TEXT);
 		if (route.size() > 1)
 		{
@@ -177,7 +205,7 @@ class RunRow extends JComponent
 			g.setColor(Theme.mix(Theme.PURPLE, Theme.TEXT_FAINT, 0.3));
 		}
 		// On a two-line route the note sits beside the route, so this last line has the row to itself.
-		g.drawString(Ui.clip(when, small, h > 32 ? w - x - 6 : w - x - 70), x, h - 6);
+		g.drawString(Ui.clip(when, small, h >= TALL ? w - x - 6 : w - x - 70), x, h - 6);
 		g.dispose();
 	}
 }
