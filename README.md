@@ -18,6 +18,9 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
 - **Sessions.** Runs less than 45 minutes apart count as one sitting. After a run, the Run page shows this session's clears, clears an hour, average time and the downtime between runs, plus any new best or purple it brought; the Records page lists your last five sessions with their pace and best.
 - **Records.** Per party size (solo, duo, trio, 4, 5, 6+): your best time, your sum of best (every row's fastest room added together), the average of your last 10 clears, and clears and wipes. Then the best room for each row with a bar for what a typical run lately gives away there, the worst row lit, and the best fight for each of the eight bosses.
 - **Steadiness and doors.** A chart of your last 20 clears with your best and typical times, how much your runs vary, how many times you've set a new best and your clear rate. For each row where you've taken both doors at least three times, which one is quicker for you and by how much.
+- **Your best, over time.** Every time you set a new best for a party size, with the date and how much it took off the one before, newest first, and how far your best has come since your first clear.
+- **Routes.** Each way through the three rows of doors you have cleared, ranked by its best clear, with how often you took it and your typical time on it. After a clear, the Run page says how it stood on its own route: "Fastest yet through Bork, Dreadnoth, Trio", or how far off that route's best it was, even when a quicker route holds your overall best.
+- **Where runs wipe.** The bosses your runs have wiped at, with how many tries there it took and the share that ended there, so you know which fight to practise. A wipe before either door of a row was seen is left out, since there is no telling which door it was.
 - **Crew and notes.** The raiders you were with are noted on every run, and the Records page lists who you raid with most and your best clear together. Right-click a run to note your role (tank, melee, ranged, magic, support, learner) or write a note on it, which shows on the run and in the export.
 - **Share and export.** Right-click a run to copy its splits as text for a chat, or save your whole history as a spreadsheet (CSV) with every room and fight in seconds, through RuneLite's own save dialog.
 - **Spoils.** Your dry streak and the longest you've gone, your purples and how often they come, how much of the log you have, a tablet for each unique that lights up once you've got it, and a log of every purple with the KC it came on and how many clears it took.
@@ -34,6 +37,7 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
   <br>
   <img src="docs/screenshots/goal.png" width="225" alt="Goal time on the Records page">
   <img src="docs/screenshots/session.png" width="225" alt="This session after a run">
+  <img src="docs/screenshots/routes.png" width="225" alt="Your best over time, doors and routes">
 </p>
 
 ## How it times

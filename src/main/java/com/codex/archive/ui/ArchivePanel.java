@@ -294,6 +294,11 @@ public class ArchivePanel extends PluginPanel
 		if (!live)
 		{
 			stack.add(summary(run, best));
+			String route = routeLine(run, bucket);
+			if (route != null)
+			{
+				stack.add(Ui.wrapped(route, Theme.small(), Theme.TEXT_MUTED, WIDTH - 16));
+			}
 		}
 		Map<Supply, Integer> used = used(run);
 		if (!used.isEmpty())
@@ -403,6 +408,34 @@ public class ArchivePanel extends PluginPanel
 		return grid;
 	}
 
+	/** How a clear stands on its own route of doors, or null when that cannot be said. */
+	private String routeLine(Run run, int bucket)
+	{
+		List<Encounter> doors = Insights.doors(run);
+		if (!run.isCompleted() || doors == null)
+		{
+			return null;
+		}
+		int[] before = Insights.routeBest(runs(), bucket, run);
+		String name = doors.get(0).getShortName() + ", " + doors.get(1).getShortName() + ", " + doors.get(2).getShortName();
+		if (before[0] < 0)
+		{
+			return "First clear through " + name + ".";
+		}
+		int d = run.getTicks() - before[0];
+		if (d == 0)
+		{
+			return "Level with your best through " + name + ".";
+		}
+		return d < 0 ? "Fastest yet through " + name + ", " + Format.span(-d) + " under the " + before[1] + (before[1] == 1 ? " clear" : " clears") + " before."
+			: Format.span(d) + " off your best through " + name + " (" + Format.ticks(before[0]) + ").";
+	}
+
+	/** Newest personal bests listed, routes listed, and bosses listed under where runs wipe. */
+	private static final int LADDER = 5;
+	private static final int ROUTES = 4;
+	private static final int WALLS = 3;
+
 	private void rebuildRecords(boolean force)
 	{
 		int bucket = party.getSelected();
@@ -478,6 +511,27 @@ public class ArchivePanel extends PluginPanel
 			stack.add(steady);
 		}
 
+		List<Insights.Best> ladder = Insights.ladder(runs, bucket);
+		if (ladder.size() >= 2)
+		{
+			Insights.Best first = ladder.get(0);
+			Insights.Best last = ladder.get(ladder.size() - 1);
+			stack.add(new SectionHeader("Your best, over time", Format.span(first.ticks - last.ticks) + " off"));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = ladder.size() - 1; i >= Math.max(0, ladder.size() - LADDER); i--)
+			{
+				Insights.Best b = ladder.get(i);
+				card.add(twoLine(Format.day(b.at), b.saved < 0 ? "first clear" : Format.span(b.saved) + " off the one before",
+					Format.ticks(b.ticks), i == ladder.size() - 1 ? "best now" : "", i == ladder.size() - 1 ? Theme.GOLD_BRIGHT : Theme.TEXT));
+			}
+			if (ladder.size() > LADDER)
+			{
+				card.add(Ui.label((ladder.size() - LADDER) + " more before, from " + Format.ticks(first.ticks),
+					Theme.small(), Theme.TEXT_FAINT));
+			}
+			stack.add(card);
+		}
+
 		List<Insights.DoorStat[]> doors = Insights.doors(runs, bucket);
 		if (!doors.isEmpty())
 		{
@@ -486,6 +540,41 @@ public class ArchivePanel extends PluginPanel
 			for (Insights.DoorStat[] pair : doors)
 			{
 				card.add(doorLine(pair));
+			}
+			stack.add(card);
+		}
+
+		List<Insights.RouteStat> routes = Insights.routes(runs, bucket);
+		if (routes.size() >= 2)
+		{
+			stack.add(new SectionHeader("Routes", "best clear"));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = 0; i < Math.min(ROUTES, routes.size()); i++)
+			{
+				Insights.RouteStat r = routes.get(i);
+				JComponent row = twoLine(r.name(), Theme.small(), r.clears + (r.clears == 1 ? " clear" : " clears") + (r.clears >= 3 ? ", typical " + Format.ticks(r.typical) : ""),
+					Format.ticks(r.best), i == 0 ? "fastest" : "+" + Format.span(r.best - routes.get(0).best), i == 0 ? Theme.GOLD_BRIGHT : Theme.TEXT);
+				row.setToolTipText("<html>" + r.name() + "<br>Best clear " + Format.ticks(r.best) + (r.clears >= 2 ? ", middle of " + r.clears + " clears " + Format.ticks(r.typical) : "") + "</html>");
+				card.add(row);
+			}
+			if (routes.size() > ROUTES)
+			{
+				card.add(Ui.label("and " + (routes.size() - ROUTES) + " slower " + (routes.size() - ROUTES == 1 ? "route" : "routes"), Theme.small(), Theme.TEXT_FAINT));
+			}
+			stack.add(card);
+		}
+
+		List<Insights.Wall> walls = Insights.walls(runs, bucket);
+		if (!walls.isEmpty())
+		{
+			stack.add(new SectionHeader("Where runs wipe", null));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = 0; i < Math.min(WALLS, walls.size()); i++)
+			{
+				Insights.Wall w = walls.get(i);
+				long share = w.tries == 0 ? 0 : Math.round(100.0 * w.wipes / w.tries);
+				card.add(twoLine(w.encounter.getTitle(), w.wipes + (w.wipes == 1 ? " wipe" : " wipes") + " in " + w.tries + (w.tries == 1 ? " try" : " tries"),
+					share + "%", "of tries", i == 0 ? Theme.BEHIND : Theme.TEXT));
 			}
 			stack.add(card);
 		}
@@ -809,11 +898,16 @@ public class ArchivePanel extends PluginPanel
 
 	private static JComponent twoLine(String title, String sub, String value, String valueSub, Color color)
 	{
+		return twoLine(title, Theme.body(), sub, value, valueSub, color);
+	}
+
+	private static JComponent twoLine(String title, java.awt.Font titleFont, String sub, String value, String valueSub, Color color)
+	{
 		JPanel row = new JPanel(new BorderLayout(6, 0));
 		row.setOpaque(false);
 		JPanel left = new JPanel(new GridLayout(2, 1));
 		left.setOpaque(false);
-		left.add(Ui.label(title, Theme.body(), Theme.TEXT));
+		left.add(Ui.label(title, titleFont, Theme.TEXT));
 		left.add(Ui.label(sub, Theme.small(), Theme.TEXT_FAINT));
 		row.add(left, BorderLayout.CENTER);
 		JPanel right = new JPanel(new GridLayout(2, 1));
