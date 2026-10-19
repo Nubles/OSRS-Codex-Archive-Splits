@@ -23,7 +23,9 @@ import com.codex.archive.ui.View;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -32,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
+import javax.imageio.ImageIO;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Actor;
@@ -169,6 +172,7 @@ public class CodexArchivePlugin extends Plugin
 		panel.onDelete(this::deleteRun, this::deleteDrop);
 		panel.onNotes((at, role) -> annotate(a -> a.setRole(at, role)), (at, note) -> annotate(a -> a.setNote(at, note)));
 		panel.onExport(this::export);
+		panel.onSaveCard(this::saveCard);
 		panel.onGoal((bucket, ticks) -> annotate(a ->
 		{
 			a.setGoal(bucket, ticks);
@@ -748,6 +752,45 @@ public class CodexArchivePlugin extends Plugin
 			{
 				log.warn("Could not save the run history", e);
 			}
+		});
+	}
+
+	/** Asks where to save a run card with RuneLite's own file chooser, then writes it there; runs on the Swing thread. */
+	private void saveCard(BufferedImage card, String name)
+	{
+		ArchivePanel view = panel;
+		if (view == null)
+		{
+			return;
+		}
+		List<Filepath> chosen = new Filepath.Chooser()
+			.setIsSave()
+			.setAcceptsFiles()
+			.setDialogTitle("Save run card")
+			.addExtensionFilter("PNG image", "png")
+			.setDefaultExtension("png")
+			.setFileName(name + ".png")
+			.showDialog(view);
+		if (chosen == null || chosen.isEmpty())
+		{
+			return;
+		}
+		Filepath target = chosen.get(0);
+		executor.execute(() ->
+		{
+			String note;
+			try (OutputStream out = target.openOutputStream())
+			{
+				ImageIO.write(card, "png", out);
+				note = "Run card saved as " + target.getFileName() + ".";
+			}
+			catch (IOException e)
+			{
+				log.warn("Could not save the run card", e);
+				note = "The run card could not be saved: " + e.getMessage();
+			}
+			String shown = note;
+			SwingUtilities.invokeLater(() -> view.cardNote(shown));
 		});
 	}
 

@@ -13,6 +13,7 @@ import com.codex.archive.core.Run;
 import com.codex.archive.core.Sessions;
 import com.codex.archive.core.Spoils;
 import com.codex.archive.core.Split;
+import com.codex.archive.core.Standing;
 import com.codex.archive.core.Stats;
 import com.codex.archive.core.Supply;
 import java.awt.BorderLayout;
@@ -22,6 +23,8 @@ import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.awt.image.BufferedImage;
+import java.time.ZoneId;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -74,6 +77,12 @@ public class ArchivePanel extends PluginPanel
 	private BiConsumer<Long, String> onRole = (t, r) -> { };
 	private BiConsumer<Long, String> onNote = (t, n) -> { };
 	private Runnable onExport = () -> { };
+	private BiConsumer<BufferedImage, String> onSaveCard = (card, name) -> { };
+	/** A line under the run card's buttons, such as where it was saved; cleared when the run page moves on. */
+	private String cardNote;
+	/** The state moved on while the panel was out of sight; the pages are built when it opens. */
+	private boolean stale;
+	private boolean spoilsStale;
 	private BiConsumer<Integer, Integer> onGoal = (b, t) -> { };
 	/** What the run page was last built from; while it holds, a tick only repaints the thread. */
 	private String runKey;
@@ -151,6 +160,47 @@ public class ArchivePanel extends PluginPanel
 		onExport = export;
 	}
 
+	/** What the panel asks of the plugin to save a run card: the picture and the file name to offer. */
+	public void onSaveCard(BiConsumer<BufferedImage, String> save)
+	{
+		onSaveCard = save;
+	}
+
+	/** A line under the run card's buttons, such as where it was saved. */
+	public void cardNote(String note)
+	{
+		cardNote = note;
+		runKey = null;
+		rebuildRun();
+	}
+
+	/** The run card of a run, measured against the runs of its party size before it. */
+	BufferedImage runCard(Run r)
+	{
+		return RunCard.render(Standing.of(runs(), r), view.player, ZoneId.systemDefault());
+	}
+
+	private void saveCard(Run r)
+	{
+		onSaveCard.accept(runCard(r), "Fractured Archive " + Records.BUCKETS[Records.bucket(r.getTeamSize())].toLowerCase()
+			+ " " + Format.fileDay(r.getStartedAt()));
+	}
+
+	private void copyCard(Run r)
+	{
+		String note;
+		try
+		{
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new ImageTransfer(runCard(r)), null);
+			note = "Run card copied. Paste it anywhere you share pictures.";
+		}
+		catch (IllegalStateException e)
+		{
+			note = "The clipboard is busy, try again in a moment.";
+		}
+		cardNote(note);
+	}
+
 	/** The copy of the account's archive the panel shows, read on the Swing thread; or null. */
 	public Archive archive()
 	{
@@ -166,12 +216,35 @@ public class ArchivePanel extends PluginPanel
 		{
 			party.setSelected(view.live != null ? Records.bucket(view.live.getTeamSize()) : Records.favouriteBucket(view.archive.getRuns()), false);
 		}
+		spoilsStale |= historyChanged;
+		// Building the pages costs real time; while the panel is out of sight it waits until it is opened.
+		if (!isShowing())
+		{
+			stale = true;
+			return;
+		}
+		refresh();
+	}
+
+	@Override
+	public void onActivate()
+	{
+		if (stale)
+		{
+			refresh();
+		}
+	}
+
+	private void refresh()
+	{
+		stale = false;
 		updateCrest();
 		rebuildRun();
 		// Also catches the party size moving to the live run's, which changes what the page holds.
 		rebuildRecords(false);
-		if (historyChanged)
+		if (spoilsStale)
 		{
+			spoilsStale = false;
 			rebuildSpoils();
 		}
 	}
@@ -206,7 +279,7 @@ public class ArchivePanel extends PluginPanel
 
 	private void updateCrest()
 	{
-		String heading = view.player != null ? view.player + "  -  ARCHIVE" : "FRACTURED ARCHIVE";
+		String heading = view.player != null ? view.player + "  \u00b7  ARCHIVE" : "FRACTURED ARCHIVE";
 		if (view.archive == null)
 		{
 			crest.update(heading, "", null, false, "Log in to open the archive", null, null, null);
@@ -248,6 +321,11 @@ public class ArchivePanel extends PluginPanel
 			// Mid-run the page keeps its shape; only the thread, the clocks and the bars move.
 			refreshLive();
 			return;
+		}
+		if (runKey != null && !key.equals(runKey))
+		{
+			// A note on where the last card went belongs to that page, not the next run's.
+			cardNote = null;
 		}
 		runKey = key;
 		StackPanel stack = new StackPanel(Theme.GUTTER, Theme.GUTTER);
@@ -304,6 +382,16 @@ public class ArchivePanel extends PluginPanel
 			if (!doubts.isEmpty())
 			{
 				stack.add(doubts(doubts));
+			}
+			// The run as a picture to share: what a clear is for, after the clear itself.
+			JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 6, 0));
+			buttons.setOpaque(false);
+			buttons.add(new CodexButton("Save run card", true, () -> saveCard(run)));
+			buttons.add(new CodexButton("Copy run card", false, () -> copyCard(run)));
+			stack.add(buttons);
+			if (cardNote != null)
+			{
+				stack.add(Ui.wrapped(cardNote, Theme.small(), Theme.TEAL, WIDTH - 16));
 			}
 		}
 		Map<Supply, Integer> used = used(run);
@@ -486,17 +574,26 @@ public class ArchivePanel extends PluginPanel
 		stack.add(grid);
 		goal(stack, runs, bucket);
 
-		stack.add(new SectionHeader("Best rooms", "and a typical one"));
-		stack.add(rooms(runs, bucket));
-
-		stack.add(new SectionHeader("Best fights", "first hit to fall"));
-		Card fights = new Card(new GridLayout(0, 1, 0, 2));
-		for (Encounter e : Encounter.values())
+		// A party size with nothing timed yet has no rooms or fights to list, only rows of dashes.
+		boolean timed = false;
+		for (Run r : runs)
 		{
-			int t = Records.bestFight(runs, bucket, e);
-			fights.add(line(e.getTitle(), t < 0 ? "-" : Format.ticks(t), t < 0 ? Theme.TEXT_FAINT : Theme.TEXT));
+			timed |= Records.bucket(r.getTeamSize()) == bucket && r.reached() > 0;
 		}
-		stack.add(fights);
+		if (timed)
+		{
+			stack.add(new SectionHeader("Best rooms", "and a typical one"));
+			stack.add(rooms(runs, bucket));
+
+			stack.add(new SectionHeader("Best fights", "first hit to fall"));
+			Card fights = new Card(new GridLayout(0, 1, 0, 2));
+			for (Encounter e : Encounter.values())
+			{
+				int t = Records.bestFight(runs, bucket, e);
+				fights.add(line(e.getTitle(), t < 0 ? "-" : Format.ticks(t), t < 0 ? Theme.TEXT_FAINT : Theme.TEXT));
+			}
+			stack.add(fights);
+		}
 
 		List<Integer> trend = Insights.trend(runs, bucket);
 		if (trend.size() >= 3)
@@ -634,8 +731,9 @@ public class ArchivePanel extends PluginPanel
 			{
 				Sessions.Session t = sittings.get(i);
 				String pace = t.perHour() > 0 ? String.format(java.util.Locale.ENGLISH, ", %.1f an hour", t.perHour()) : "";
+				// "Best of 1" says nothing a lone run's time does not; the line is left empty then.
 				String sub = t.getBest() < 0 ? "no clear" : t.getBests() == 1 ? "new best" : t.getBests() > 1 ? t.getBests() + " new bests"
-					: "best of " + t.getClears();
+					: t.getClears() > 1 ? "best of " + t.getClears() : "";
 				card.add(twoLine(Format.day(t.getStart()), t.getCounted().size() + (t.getCounted().size() == 1 ? " run" : " runs") + pace,
 					t.getBest() < 0 ? "-" : Format.ticks(t.getBest()), sub,
 					t.getBests() > 0 ? Theme.GOLD_BRIGHT : Theme.TEXT));
@@ -659,7 +757,7 @@ public class ArchivePanel extends PluginPanel
 
 		if (!runs.isEmpty())
 		{
-			JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+			JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
 			buttons.setOpaque(false);
 			buttons.add(new CodexButton("Save runs as a spreadsheet", false, onExport));
 			stack.add(buttons);
@@ -716,9 +814,10 @@ public class ArchivePanel extends PluginPanel
 		for (int i = drops.size() - 1; i >= 0 && i >= drops.size() - DROPS; i--)
 		{
 			Drop d = drops.get(i);
-			String when = (d.getKc() > 0 ? "KC " + Format.count(d.getKc()) + ", " : "") + Format.shortDay(d.getAt());
+			// The unique's name gets the whole width; how long it took joins the line beneath it.
 			String after = d.getDry() <= 1 ? "first clear" : "after " + d.getDry() + " clears";
-			JComponent line = dropLine(d.getUnique(), when, after);
+			String when = (d.getKc() > 0 ? "KC " + Format.count(d.getKc()) + " \u00b7 " : "") + Format.shortDay(d.getAt()) + " \u00b7 " + after;
+			JComponent line = dropLine(d.getUnique(), when);
 			line.setComponentPopupMenu(menu("Remove this purple",
 				"Remove the " + d.getUnique() + " from " + Format.day(d.getAt()) + "? Only do this if it never dropped; the clears it took go back onto your dry streak.",
 				() -> onDeleteDrop.accept(d.getAt(), d.getUnique())));
@@ -966,6 +1065,12 @@ public class ArchivePanel extends PluginPanel
 			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(Share.splits(r, pb)), null);
 		});
 		popup.add(copy);
+		JMenuItem save = new JMenuItem("Save run card...");
+		save.addActionListener(e -> saveCard(r));
+		popup.add(save);
+		JMenuItem picture = new JMenuItem("Copy run card");
+		picture.addActionListener(e -> copyCard(r));
+		popup.add(picture);
 		popup.addSeparator();
 		JPopupMenu delete = menu("Delete this run",
 			"Delete the " + describe(r) + " from " + Format.day(r.getStartedAt()) + " at " + Format.time(r.getStartedAt())
@@ -1022,7 +1127,7 @@ public class ArchivePanel extends PluginPanel
 		return row;
 	}
 
-	private static JComponent dropLine(String unique, String when, String after)
+	private static JComponent dropLine(String unique, String when)
 	{
 		JPanel row = new JPanel(new BorderLayout(6, 0));
 		row.setOpaque(false);
@@ -1032,7 +1137,7 @@ public class ArchivePanel extends PluginPanel
 		left.add(Ui.label(unique, Theme.body(), tone));
 		left.add(Ui.label(when, Theme.small(), Theme.TEXT_FAINT));
 		row.add(left, BorderLayout.CENTER);
-		row.add(Ui.label(after, Theme.small(), Theme.TEXT_MUTED), BorderLayout.EAST);
+		row.setToolTipText(unique + ", " + when);
 		return row;
 	}
 

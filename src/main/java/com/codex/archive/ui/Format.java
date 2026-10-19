@@ -118,6 +118,12 @@ public final class Format
 		return SHORT.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()));
 	}
 
+	/** "2026-10-20", for a file name. */
+	public static String fileDay(long epochMs)
+	{
+		return Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().toString();
+	}
+
 	/** "14:02". */
 	public static String time(long epochMs)
 	{

@@ -259,7 +259,7 @@ public class SplitTable extends JComponent
 	}
 
 	/** A small rounded tag, right-aligned at x, for a delta. */
-	private static void paintPill(Graphics2D g, String text, Color color, int right, int top)
+	static void paintPill(Graphics2D g, String text, Color color, int right, int top)
 	{
 		g.setFont(Theme.small());
 		FontMetrics fm = g.getFontMetrics();
