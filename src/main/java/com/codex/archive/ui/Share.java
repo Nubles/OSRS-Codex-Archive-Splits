@@ -46,6 +46,7 @@ public final class Share
 			if (best > 0)
 			{
 				sb.append(run.getTicks() < best ? ", a new best by " + Format.span(best - run.getTicks())
+					: run.getTicks() == best ? ", level with the best"
 					: ", " + Format.span(run.getTicks() - best) + " off the best");
 			}
 		}

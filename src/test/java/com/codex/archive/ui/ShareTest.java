@@ -52,4 +52,13 @@ public class ShareTest
 		assertEquals("level with your typical run", Format.versus(0, "your typical run"));
 		assertEquals("1.2s behind your best", Format.versus(2));
 	}
+
+	@Test
+	public void aTiedClearIsLevelWithTheBest()
+	{
+		Run best = run(1, 100, 200, 300, 400, 500);
+		Run again = run(2, 100, 200, 300, 400, 500);
+		String text = Share.splits(again, Comparison.of(Arrays.asList(best, again), 2, Comparison.Mode.PERSONAL_BEST, again));
+		assertTrue(text, text.contains("Cleared in 5:00.0, level with the best\n"));
+	}
 }

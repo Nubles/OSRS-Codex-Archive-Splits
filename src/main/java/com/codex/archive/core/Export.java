@@ -69,8 +69,8 @@ public final class Export
 	}
 
 	/**
-	 * A text cell, quoted when it holds a comma, quote or line break. A leading =, +, - or @ is
-	 * set off with a quote mark so a spreadsheet never runs a name or note as a formula.
+	 * A text cell, quoted when it holds a comma, quote or line break. A leading =, +, -, @, tab or
+	 * carriage return is set off with a quote mark so a spreadsheet never runs a name or note as a formula.
 	 */
 	static String cell(String text)
 	{
@@ -79,7 +79,7 @@ public final class Export
 			return "";
 		}
 		String t = text;
-		if ("=+-@".indexOf(t.charAt(0)) >= 0)
+		if ("=+-@\t\r".indexOf(t.charAt(0)) >= 0)
 		{
 			t = "'" + t;
 		}

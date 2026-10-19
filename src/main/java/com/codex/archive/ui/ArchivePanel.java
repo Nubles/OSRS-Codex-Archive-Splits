@@ -454,7 +454,9 @@ public class ArchivePanel extends PluginPanel
 			int pbs = Insights.personalBests(runs, bucket);
 			steady.add(new StatTile(String.valueOf(pbs), "Bests", pbs == 1 ? "set once" : "times set", Theme.GOLD));
 			int attempts = allClears + allWipes;
-			steady.add(new StatTile(attempts == 0 ? "-" : Math.round(100.0 * allClears / attempts) + "%", "Clears", "of tries",
+			// Rounded down once there is a wipe, so 199 clears and a wipe never read as 100%.
+			long rate = attempts == 0 ? 0 : allWipes > 0 ? 100L * allClears / attempts : 100;
+			steady.add(new StatTile(attempts == 0 ? "-" : rate + "%", "Clears", "of tries",
 				allWipes == 0 ? Theme.GREEN : Theme.TEXT));
 			stack.add(steady);
 		}

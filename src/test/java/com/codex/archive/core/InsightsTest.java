@@ -215,4 +215,16 @@ public class InsightsTest
 		assertTrue(lines[1].endsWith(",\"'=cmd, \"\"quoted\"\"\""));
 		assertEquals("36.0", Export.seconds(60));
 	}
+
+	@Test
+	public void exportGuardsEveryFormulaLead()
+	{
+		// A spreadsheet also runs a cell that starts with a tab or carriage return followed by a formula.
+		assertEquals("'\t=1+1", Export.cell("\t=1+1"));
+		assertEquals("\"'\r=1+1\"", Export.cell("\r=1+1"));
+		assertEquals("'-2+3", Export.cell("-2+3"));
+		assertEquals("'@SUM(A1)", Export.cell("@SUM(A1)"));
+		assertEquals("\"a\nb\"", Export.cell("a\nb"));
+		assertEquals("Ashen Reed", Export.cell("Ashen Reed"));
+	}
 }
