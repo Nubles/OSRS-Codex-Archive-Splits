@@ -27,7 +27,7 @@ It is part of the **Codex** suite of RuneLite plugins and shares their look: war
 - **Share and export.** Right-click a run to copy its splits as text for a chat, or save your whole history as a spreadsheet (CSV) with every room and fight in seconds, through RuneLite's own save dialog.
 - **Spoils.** Your dry streak and the longest you've gone, your purples and how often they come, how much of the log you have, a tablet for each unique that lights up once you've got it, and a log of every purple with the KC it came on and how many clears it took.
 - **Pack check.** In the lobby, bars for food, brews, restores and boosts against the amounts you set in the plugin's settings, plus a plaque in the game view naming anything you're short of. Set a supply to 0 to leave it out of the check, or all of them to turn the check off.
-- **Live plaque and chat splits.** A small plaque in the game view during a run shows the current room, its clock, the run's clock and your standing against your best, and stays for a few seconds after a clear. A line in the chat box gives each boss's time and how it stands against your best, and the final time when the run ends. Both can be turned off.
+- **Live plaque and chat splits.** A small plaque in the game view during a run shows the current room, its clock, the run's clock and how you stand against what you compare with, and stays for a few seconds after a clear. A line in the chat box gives each boss's time and how it stands, and the final time when the run ends. Both can be turned off.
 - **Fixing mistakes.** Right-click a run on the Records page and choose delete, or a purple on the Spoils page to remove it, if the plugin ever got one wrong. Your records and dry streak are worked out again without it.
 - **Check this run.** When a boss was told by its row and size rather than its name, or a row went untimed, the Run page says what the plugin saw: the NPC each guess was taken from with its combat level, and the big foes the run fought that no boss name matched. A wrong split is easy to spot and delete.
 
@@ -38,8 +38,6 @@ It is part of the **Codex** suite of RuneLite plugins and shares their look: war
   <img src="docs/screenshots/plaque.png" alt="Live plaque">
   <img src="docs/screenshots/pack-plaque.png" alt="Pack plaque">
   <br>
-  <img src="docs/screenshots/goal.png" width="225" alt="Goal time on the Records page">
-  <img src="docs/screenshots/session.png" width="225" alt="This session after a run">
   <img src="docs/screenshots/routes.png" width="225" alt="Your best over time, doors and routes">
   <br>
   <img src="docs/screenshots/run-card.png" width="360" alt="A run card">
