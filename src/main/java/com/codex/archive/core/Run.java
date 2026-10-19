@@ -9,6 +9,13 @@ import java.util.Map;
 /** One trip into the archive, kept in the run history. */
 public class Run
 {
+	/** The roles a raider can note for a run; free text goes in the note. Kept here so there is one list. */
+	public static final String[] ROLES = {"Tank", "Melee", "Ranged", "Magic", "Support", "Learner"};
+	/** Longest note kept, so one run cannot bloat the save. */
+	public static final int NOTE_LENGTH = 80;
+	/** Most teammates kept for one run. */
+	public static final int CREW = 9;
+
 	private long startedAt;
 	private int teamSize;
 	private Outcome outcome;
@@ -22,6 +29,12 @@ public class Run
 	private Map<String, Integer> used = new LinkedHashMap<>();
 	/** The unique the run gave, or null. */
 	private String purple;
+	/** The other raiders seen at the start, by name. */
+	private List<String> crew = new ArrayList<>();
+	/** The role the player noted for this run, or null. */
+	private String role;
+	/** The player's own note on the run, or null. */
+	private String note;
 
 	public Run()
 	{
@@ -76,6 +89,45 @@ public class Run
 	public String getPurple()
 	{
 		return purple;
+	}
+
+	public List<String> getCrew()
+	{
+		return crew == null ? Collections.emptyList() : Collections.unmodifiableList(crew);
+	}
+
+	public String getRole()
+	{
+		return role;
+	}
+
+	public String getNote()
+	{
+		return note;
+	}
+
+	/** Adds a raider seen in the run, keeping the first few distinct names. */
+	void addCrew(String name)
+	{
+		if (crew == null)
+		{
+			crew = new ArrayList<>();
+		}
+		if (name != null && !name.isEmpty() && crew.size() < CREW && !crew.contains(name))
+		{
+			crew.add(name);
+		}
+	}
+
+	void setRole(String role)
+	{
+		this.role = role == null || role.trim().isEmpty() ? null : role.trim();
+	}
+
+	void setNote(String note)
+	{
+		String n = note == null ? "" : note.replaceAll("[\\r\\n\\t]+", " ").trim();
+		this.note = n.isEmpty() ? null : n.length() > NOTE_LENGTH ? n.substring(0, NOTE_LENGTH) : n;
 	}
 
 	public boolean isCompleted()
@@ -181,6 +233,11 @@ public class Run
 		{
 			outcome = Outcome.LEFT;
 		}
+		if (crew == null)
+		{
+			crew = new ArrayList<>();
+		}
+		crew.removeIf(n -> n == null || n.isEmpty());
 		return this;
 	}
 
@@ -197,6 +254,9 @@ public class Run
 		r.deaths = deaths;
 		r.used = new LinkedHashMap<>(used);
 		r.purple = purple;
+		r.crew = new ArrayList<>(getCrew());
+		r.role = role;
+		r.note = note;
 		return r;
 	}
 }

@@ -69,11 +69,17 @@ public final class Format
 	/** A delta in words, for the chat box: "4.2s ahead of your best", "1:12.0 behind your best". */
 	public static String versus(int ticks)
 	{
+		return versus(ticks, "your best");
+	}
+
+	/** The same against any mark: "4.2s ahead of your best rooms". */
+	public static String versus(int ticks, String mark)
+	{
 		if (ticks == 0)
 		{
-			return "level with your best";
+			return "level with " + mark;
 		}
-		return span(ticks) + (ticks < 0 ? " ahead of" : " behind") + " your best";
+		return span(ticks) + (ticks < 0 ? " ahead of " : " behind ") + mark;
 	}
 
 	public static String count(long n)

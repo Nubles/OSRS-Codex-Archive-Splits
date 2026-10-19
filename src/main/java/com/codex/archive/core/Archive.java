@@ -209,6 +209,40 @@ public class Archive
 		return false;
 	}
 
+	/** Notes a role on a run, or clears it with null. */
+	public boolean setRole(long startedAt, String role)
+	{
+		Run r = find(startedAt);
+		if (r != null)
+		{
+			r.setRole(role);
+		}
+		return r != null;
+	}
+
+	/** Writes the player's own note on a run, or clears it with null or blank. */
+	public boolean setNote(long startedAt, String note)
+	{
+		Run r = find(startedAt);
+		if (r != null)
+		{
+			r.setNote(note);
+		}
+		return r != null;
+	}
+
+	private Run find(long startedAt)
+	{
+		for (int i = runs.size() - 1; i >= 0; i--)
+		{
+			if (runs.get(i).getStartedAt() == startedAt)
+			{
+				return runs.get(i);
+			}
+		}
+		return null;
+	}
+
 	private void count(Run run, int by)
 	{
 		int b = Records.bucket(run.getTeamSize());

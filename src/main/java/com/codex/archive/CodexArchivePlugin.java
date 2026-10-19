@@ -1,6 +1,8 @@
 package com.codex.archive;
 
 import com.codex.archive.core.Archive;
+import com.codex.archive.core.Comparison;
+import com.codex.archive.core.Export;
 import com.codex.archive.core.Encounter;
 import com.codex.archive.core.LootWatch;
 import com.codex.archive.core.Messages;
@@ -20,11 +22,15 @@ import com.codex.archive.ui.View;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
+import java.io.IOException;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Actor;
@@ -61,6 +67,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.Filepath;
+import net.runelite.client.util.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,6 +117,9 @@ public class CodexArchivePlugin extends Plugin
 	@Inject
 	private CodexArchiveConfig config;
 
+	@Inject
+	private ScheduledExecutorService executor;
+
 	private final RunTracker tracker = new RunTracker();
 	private final Presence presence = new Presence();
 	private final LootWatch loot = new LootWatch();
@@ -155,6 +166,8 @@ public class CodexArchivePlugin extends Plugin
 		overlayManager.add(splitsPlaque);
 		overlayManager.add(packPlaque);
 		panel.onDelete(this::deleteRun, this::deleteDrop);
+		panel.onNotes((at, role) -> annotate(a -> a.setRole(at, role)), (at, note) -> annotate(a -> a.setNote(at, note)));
+		panel.onExport(this::export);
 		clientThread.invokeLater(() ->
 		{
 			loadProfile();
@@ -440,6 +453,7 @@ public class CodexArchivePlugin extends Plugin
 			if (tracker.nextRow() == 0 && view != null)
 			{
 				tracker.seeTeam(count(view));
+				tracker.seeCrew(crew(view));
 			}
 			tracker.tick(tick);
 			int row = tracker.nextRow();
@@ -480,6 +494,21 @@ public class CodexArchivePlugin extends Plugin
 		return n;
 	}
 
+	/** The other raiders in view, by their names as the game shows them. */
+	private List<String> crew(WorldView view)
+	{
+		List<String> names = new ArrayList<>();
+		Player me = client.getLocalPlayer();
+		for (Player p : view.players())
+		{
+			if (p != null && p != me && p.getName() != null)
+			{
+				names.add(Text.sanitize(p.getName()));
+			}
+		}
+		return names;
+	}
+
 	private static boolean isLobbyNpc(NPC npc)
 	{
 		String name = npc.getName();
@@ -502,6 +531,10 @@ public class CodexArchivePlugin extends Plugin
 	{
 		WorldView view = client.getTopLevelWorldView();
 		tracker.begin(System.currentTimeMillis(), at, view == null ? 1 : count(view), pack);
+		if (view != null)
+		{
+			tracker.seeCrew(crew(view));
+		}
 		loot.open(heldUniques());
 		announcedRow = 0;
 		wipeAnnounced = false;
@@ -641,6 +674,57 @@ public class CodexArchivePlugin extends Plugin
 		});
 	}
 
+	/** A role or note the player wrote on a run in the panel. */
+	private void annotate(java.util.function.Predicate<Archive> change)
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (archive != null && change.test(archive))
+			{
+				unsaved = true;
+				changed = true;
+				save();
+				publish();
+			}
+		});
+	}
+
+	/** Asks where to save the run history with RuneLite's own file chooser, then writes it there; runs on the Swing thread. */
+	private void export()
+	{
+		ArchivePanel view = panel;
+		Archive copy = view == null ? null : view.archive();
+		if (copy == null)
+		{
+			return;
+		}
+		List<Filepath> chosen = new Filepath.Chooser()
+			.setIsSave()
+			.setAcceptsFiles()
+			.setDialogTitle("Save Fractured Archive runs")
+			.addExtensionFilter("Spreadsheet (CSV)", "csv")
+			.setDefaultExtension("csv")
+			.setFileName("Fractured Archive runs.csv")
+			.showDialog(view);
+		if (chosen == null || chosen.isEmpty())
+		{
+			return;
+		}
+		Filepath target = chosen.get(0);
+		String csv = Export.csv(copy.getRuns(), ZoneId.systemDefault());
+		executor.execute(() ->
+		{
+			try
+			{
+				target.write(csv);
+			}
+			catch (IOException e)
+			{
+				log.warn("Could not save the run history", e);
+			}
+		});
+	}
+
 	private void deleteDrop(long at, String unique)
 	{
 		clientThread.invokeLater(() ->
@@ -663,14 +747,14 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
-		Run best = Records.best(archive.getRuns(), Records.bucket(live.getTeamSize()));
-		Integer delta = Records.delta(live, best, row);
+		Comparison.Mode mode = config.compareTo();
+		Integer delta = Comparison.of(archive.getRuns(), Records.bucket(live.getTeamSize()), mode, live).delta(live, row);
 		ChatMessageBuilder line = new ChatMessageBuilder()
 			.append(ChatColorType.HIGHLIGHT).append(split.getEncounter().getShortName())
 			.append(ChatColorType.NORMAL).append(" down at " + Format.ticks(split.getEndTick()));
 		if (delta != null)
 		{
-			line.append(", ").append(ChatColorType.HIGHLIGHT).append(Format.versus(delta)).append(ChatColorType.NORMAL);
+			line.append(", ").append(ChatColorType.HIGHLIGHT).append(Format.versus(delta, mode.getNoun())).append(ChatColorType.NORMAL);
 		}
 		line.append(". Room " + Format.ticks(split.roomTicks(0)) + ", fight " + Format.ticks(split.fightTicks(0)) + ".");
 		chat(line);
@@ -789,7 +873,7 @@ public class CodexArchivePlugin extends Plugin
 		Run live = tracker.view(tick);
 		boolean inLobby = loggedIn && presence.isInLobby() && !tracker.isActive();
 		View view = new View(loggedIn && player != null ? player.getName() : null, loggedIn, copy, live, inLobby,
-			pack, targets(), System.currentTimeMillis(), live == null ? lastClear : null);
+			pack, targets(), System.currentTimeMillis(), live == null ? lastClear : null, config.compareTo());
 		splitsPlaque.show(view);
 		packPlaque.show(view);
 		ArchivePanel target = panel;

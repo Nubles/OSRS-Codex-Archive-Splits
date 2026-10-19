@@ -27,8 +27,21 @@ class RunRow extends JComponent
 		this.now = now;
 		setOpaque(false);
 		setPreferredSize(new Dimension(10, 32));
-		setToolTipText(Format.day(run.getStartedAt()) + " at " + Format.time(run.getStartedAt())
-			+ (run.getKc() > 0 ? ", completion " + Format.count(run.getKc()) : ""));
+		StringBuilder tip = new StringBuilder("<html>").append(Format.day(run.getStartedAt())).append(" at ")
+			.append(Format.time(run.getStartedAt())).append(run.getKc() > 0 ? ", completion " + Format.count(run.getKc()) : "");
+		if (run.getRole() != null)
+		{
+			tip.append("<br>Role: ").append(Ui.escape(run.getRole()));
+		}
+		if (!run.getCrew().isEmpty())
+		{
+			tip.append("<br>With ").append(Ui.escape(String.join(", ", run.getCrew())));
+		}
+		if (run.getNote() != null)
+		{
+			tip.append("<br>").append(Ui.escape(run.getNote()));
+		}
+		setToolTipText(tip.append("</html>").toString());
 	}
 
 	@Override
@@ -97,6 +110,14 @@ class RunRow extends JComponent
 		g.setFont(Theme.small());
 		g.setColor(Theme.TEXT_FAINT);
 		String when = Format.ago(now - run.getStartedAt());
+		if (run.getRole() != null)
+		{
+			when += ", " + run.getRole().toLowerCase();
+		}
+		if (run.getNote() != null)
+		{
+			when += ", " + run.getNote();
+		}
 		if (run.getPurple() != null)
 		{
 			when = run.getPurple() + ", " + when;

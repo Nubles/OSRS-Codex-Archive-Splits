@@ -1,19 +1,24 @@
 package com.codex.archive.ui;
 
 import com.codex.archive.core.Archive;
+import com.codex.archive.core.Comparison;
 import com.codex.archive.core.Drop;
 import com.codex.archive.core.Encounter;
+import com.codex.archive.core.Insights;
 import com.codex.archive.core.Outcome;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
 import com.codex.archive.core.Spoils;
 import com.codex.archive.core.Split;
+import com.codex.archive.core.Stats;
 import com.codex.archive.core.Supply;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridLayout;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -21,6 +26,9 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.LongConsumer;
 import javax.swing.JComponent;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
@@ -41,6 +49,7 @@ public class ArchivePanel extends PluginPanel
 	private static final String[] TABS = {"run", "records", "spoils"};
 	private static final int HISTORY = 12;
 	private static final int DROPS = 10;
+	private static final int CREW = 6;
 
 	private final Crest crest = new Crest();
 	private final Segmented tabs = new Segmented(true, "Run", "Records", "Spoils");
@@ -58,6 +67,9 @@ public class ArchivePanel extends PluginPanel
 	private boolean partyChosen;
 	private LongConsumer onDeleteRun = t -> { };
 	private BiConsumer<Long, String> onDeleteDrop = (t, u) -> { };
+	private BiConsumer<Long, String> onRole = (t, r) -> { };
+	private BiConsumer<Long, String> onNote = (t, n) -> { };
+	private Runnable onExport = () -> { };
 	/** What the run page was last built from; while it holds, a tick only repaints the thread. */
 	private String runKey;
 	/** What the records page was built from, so it is only rebuilt when the history changes. */
@@ -113,6 +125,25 @@ public class ArchivePanel extends PluginPanel
 	{
 		onDeleteRun = run;
 		onDeleteDrop = drop;
+	}
+
+	/** What the panel asks of the plugin when the player notes a role or a note on a run. */
+	public void onNotes(BiConsumer<Long, String> role, BiConsumer<Long, String> note)
+	{
+		onRole = role;
+		onNote = note;
+	}
+
+	/** What the panel asks of the plugin to save the history as a spreadsheet. */
+	public void onExport(Runnable export)
+	{
+		onExport = export;
+	}
+
+	/** The copy of the account's archive the panel shows, read on the Swing thread; or null. */
+	public Archive archive()
+	{
+		return view.archive;
 	}
 
 	/** Called on the Swing thread with each new moment of the plugin's state. */
@@ -175,14 +206,15 @@ public class ArchivePanel extends PluginPanel
 		if (live != null)
 		{
 			int bucket = Records.bucket(live.getTeamSize());
-			Run best = view.liveBest;
 			int row = live.reached();
 			Split split = row < Encounter.ROWS ? live.split(row) : null;
-			Integer delta = row > 0 ? Records.delta(live, best, row - 1) : null;
+			Comparison cmp = view.comparison;
+			Integer delta = row > 0 && cmp != null ? cmp.delta(live, lastTimed(live, row - 1)) : null;
 			String room = split == null ? (row >= Encounter.ROWS ? "Cleared" : "Walking") : split.getEncounter().getShortName();
+			int possible = Comparison.bestPossible(live, view.bestRooms, live.getTicks());
 			crest.update(heading, Format.clock(live.getTicks()), Records.BUCKETS[bucket].toLowerCase(), true, null,
-				new String[]{"Room", "On best", "Best"},
-				new String[]{room, delta == null ? "-" : Format.delta(delta), best == null ? "-" : Format.clock(best.getTicks())},
+				new String[]{"Room", view.compare.getShortLabel(), "Can hit"},
+				new String[]{room, delta == null ? "-" : Format.delta(delta), possible < 0 ? "-" : Format.clock(possible)},
 				new Color[]{Theme.mix(Theme.TEAL, Theme.TEXT, 0.4), delta == null ? Theme.TEXT_FAINT : Theme.delta(delta), Theme.GOLD});
 			return;
 		}
@@ -233,21 +265,19 @@ public class ArchivePanel extends PluginPanel
 		}
 		boolean live = view.live != null;
 		int bucket = Records.bucket(run.getTeamSize());
-		Run best = Records.best(runs(), bucket);
-		if (!live && best == run)
-		{
-			// Against itself every delta is nothing; show the best before it instead, if there is one.
-			best = bestExcept(runs(), bucket, run);
-		}
-		String trailing = live ? "live, " + Records.BUCKETS[bucket].toLowerCase()
-			: Format.ago(view.now - run.getStartedAt());
+		// Against itself every delta is nothing; a finished run is measured against the runs before it.
+		Run best = bestExcept(runs(), bucket, run);
+		String trailing = (live ? "live, " + Records.BUCKETS[bucket].toLowerCase() : Format.ago(view.now - run.getStartedAt()))
+			+ ", vs " + view.compare.getShortLabel();
 		stack.add(new SectionHeader(live ? "This run" : "Last run", trailing));
-		int[] bestRooms = new int[Encounter.ROWS];
-		for (int row = 0; row < Encounter.ROWS; row++)
+		if (live)
 		{
-			bestRooms[row] = Records.bestRoom(runs(), bucket, row);
+			table.update(run, view.comparison, view.bestRooms, run.getTicks(), true);
 		}
-		table.update(run, best, bestRooms, run.getTicks(), live);
+		else
+		{
+			table.update(run, Comparison.of(runs(), bucket, view.compare, run), View.bestRooms(view.archive, run), run.getTicks(), false);
+		}
 		stack.add(table);
 
 		if (!live)
@@ -267,7 +297,7 @@ public class ArchivePanel extends PluginPanel
 	private String runKey()
 	{
 		Run run = view.live != null ? view.live : view.archive == null ? null : view.archive.last();
-		return System.identityHashCode(view.archive) + "|" + (view.live != null) + "|" + view.inLobby + "|" + view.checksPack()
+		return System.identityHashCode(view.archive) + "|" + view.compare + "|" + (view.live != null) + "|" + view.inLobby + "|" + view.checksPack()
 			+ "|" + (run == null ? "" : run.getStartedAt() + ":" + run.getTeamSize() + ":" + used(run).isEmpty())
 			+ "|" + (view.live == null ? view.now / 60_000 : 0);
 	}
@@ -276,14 +306,7 @@ public class ArchivePanel extends PluginPanel
 	private void refreshLive()
 	{
 		Run run = view.live;
-		int bucket = Records.bucket(run.getTeamSize());
-		Run best = view.liveBest;
-		int[] bestRooms = new int[Encounter.ROWS];
-		for (int row = 0; row < Encounter.ROWS; row++)
-		{
-			bestRooms[row] = Records.bestRoom(runs(), bucket, row);
-		}
-		table.update(run, best, bestRooms, run.getTicks(), true);
+		table.update(run, view.comparison, view.bestRooms, run.getTicks(), true);
 		Map<Supply, Integer> used = used(run);
 		if (!used.isEmpty())
 		{
@@ -306,6 +329,20 @@ public class ArchivePanel extends PluginPanel
 			}
 		}
 		return used;
+	}
+
+	/** The furthest row at or before this one whose boss has a time, so a missed row still leaves a delta. */
+	private static int lastTimed(Run run, int row)
+	{
+		for (int r = row; r >= 0; r--)
+		{
+			Split s = run.split(r);
+			if (s != null && s.isDone())
+			{
+				return r;
+			}
+		}
+		return row;
 	}
 
 	private static Run bestExcept(List<Run> runs, int bucket, Run except)
@@ -393,14 +430,8 @@ public class ArchivePanel extends PluginPanel
 		grid.add(new StatTile(Format.count(allClears), "Clears", allWipes == 0 ? "no wipes" : Format.count(allWipes) + (allWipes == 1 ? " wipe" : " wipes"), Theme.TEXT));
 		stack.add(grid);
 
-		stack.add(new SectionHeader("Best rooms", "walk in included"));
-		Card rooms = new Card(new GridLayout(0, 1, 0, 2));
-		for (int row = 0; row < Encounter.ROWS; row++)
-		{
-			int t = Records.bestRoom(runs, bucket, row);
-			rooms.add(line(Encounter.rowLabel(row), t < 0 ? "-" : Format.ticks(t), t < 0 ? Theme.TEXT_FAINT : Theme.TEXT));
-		}
-		stack.add(rooms);
+		stack.add(new SectionHeader("Best rooms", "and a typical one"));
+		stack.add(rooms(runs, bucket));
 
 		stack.add(new SectionHeader("Best fights", "first hit to fall"));
 		Card fights = new Card(new GridLayout(0, 1, 0, 2));
@@ -410,6 +441,35 @@ public class ArchivePanel extends PluginPanel
 			fights.add(line(e.getTitle(), t < 0 ? "-" : Format.ticks(t), t < 0 ? Theme.TEXT_FAINT : Theme.TEXT));
 		}
 		stack.add(fights);
+
+		List<Integer> trend = Insights.trend(runs, bucket);
+		if (trend.size() >= 3)
+		{
+			stack.add(new SectionHeader("Steadiness", "last " + trend.size() + " clears"));
+			stack.add(new TrendChart(trend, best == null ? -1 : best.getTicks(), Stats.median(trend)));
+			JPanel steady = new JPanel(new GridLayout(1, 3, 6, 0));
+			steady.setOpaque(false);
+			int spread = Stats.deviation(trend);
+			steady.add(new StatTile("±" + Format.span(spread), "Spread", "typical", Theme.TEXT));
+			int pbs = Insights.personalBests(runs, bucket);
+			steady.add(new StatTile(String.valueOf(pbs), "Bests", pbs == 1 ? "set once" : "times set", Theme.GOLD));
+			int attempts = allClears + allWipes;
+			steady.add(new StatTile(attempts == 0 ? "-" : Math.round(100.0 * allClears / attempts) + "%", "Clears", "of tries",
+				allWipes == 0 ? Theme.GREEN : Theme.TEXT));
+			stack.add(steady);
+		}
+
+		List<Insights.DoorStat[]> doors = Insights.doors(runs, bucket);
+		if (!doors.isEmpty())
+		{
+			stack.add(new SectionHeader("Doors", "typical room"));
+			Card card = new Card(new GridLayout(0, 1, 0, 8));
+			for (Insights.DoorStat[] pair : doors)
+			{
+				card.add(doorLine(pair));
+			}
+			stack.add(card);
+		}
 
 		int inBucket = done + wiped + left;
 		String party = Records.BUCKETS[bucket].toLowerCase();
@@ -425,10 +485,7 @@ public class ArchivePanel extends PluginPanel
 				continue;
 			}
 			RunRow row = new RunRow(r, r == best, best == null ? -1 : best.getTicks(), view.now);
-			row.setComponentPopupMenu(menu("Delete this run",
-				"Delete the " + describe(r) + " from " + Format.day(r.getStartedAt()) + " at " + Format.time(r.getStartedAt())
-					+ "? Its times leave your records for good.",
-				() -> onDeleteRun.accept(r.getStartedAt())));
+			row.setComponentPopupMenu(runMenu(r, bucket));
 			history.add(row);
 			shown++;
 		}
@@ -441,7 +498,30 @@ public class ArchivePanel extends PluginPanel
 		stack.add(history);
 		if (shown > 0)
 		{
-			stack.add(Ui.wrapped("Right-click a run the plugin timed wrongly to delete it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+			stack.add(Ui.wrapped("Right-click a run to note your role, write a note, copy its splits or delete one the plugin timed wrongly.",
+				Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
+
+		List<Insights.Mate> crew = Insights.crew(runs, bucket);
+		if (!crew.isEmpty())
+		{
+			stack.add(new SectionHeader("Crew", crew.size() > CREW ? "top " + CREW : null));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = 0; i < Math.min(CREW, crew.size()); i++)
+			{
+				Insights.Mate m = crew.get(i);
+				card.add(twoLine(m.name, m.runs + (m.runs == 1 ? " run" : " runs") + ", " + m.clears + (m.clears == 1 ? " clear" : " clears"),
+					m.best < 0 ? "-" : Format.ticks(m.best), m.best < 0 ? "no clear" : "best together", Theme.TEXT));
+			}
+			stack.add(card);
+		}
+
+		if (!runs.isEmpty())
+		{
+			JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+			buttons.setOpaque(false);
+			buttons.add(new CodexButton("Save runs as a spreadsheet", false, onExport));
+			stack.add(buttons);
 		}
 		setPage(recordsPage, stack);
 	}
@@ -514,6 +594,124 @@ public class ArchivePanel extends PluginPanel
 			stack.add(Ui.wrapped("Right-click a purple that never dropped to remove it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		}
 		setPage(spoilsPage, stack);
+	}
+
+	/** Each row's best room with a bar for what a typical run lately gives away, the worst row lit. */
+	private static JComponent rooms(List<Run> runs, int bucket)
+	{
+		Map<Integer, Insights.RowStat> stats = new HashMap<>();
+		int scale = 0;
+		int worst = -1;
+		for (Insights.RowStat r : Insights.rows(runs, bucket))
+		{
+			stats.put(r.row, r);
+			if (r.loss() > scale)
+			{
+				scale = r.loss();
+				worst = r.row;
+			}
+		}
+		Card card = new Card(new BorderLayout());
+		JPanel lines = new JPanel();
+		lines.setOpaque(false);
+		lines.setLayout(new javax.swing.BoxLayout(lines, javax.swing.BoxLayout.Y_AXIS));
+		for (int row = 0; row < Encounter.ROWS; row++)
+		{
+			Insights.RowStat stat = stats.get(row);
+			if (row > 0)
+			{
+				lines.add(javax.swing.Box.createVerticalStrut(5));
+			}
+			lines.add(new RoomLine(Encounter.rowLabel(row), Records.bestRoom(runs, bucket, row), stat == null ? -1 : stat.typical,
+				scale, row == worst && scale > 0));
+		}
+		card.add(lines, BorderLayout.CENTER);
+		return card;
+	}
+
+	/** Both doors of a row, one line each with its typical room, and which is quicker for you. */
+	private static JComponent doorLine(Insights.DoorStat[] pair)
+	{
+		Insights.DoorStat a = pair[0];
+		Insights.DoorStat b = pair[1];
+		int gap = a.typical - b.typical;
+		Insights.DoorStat quick = gap > 0 ? b : a;
+		JPanel block = new JPanel(new GridLayout(0, 1, 0, 1));
+		block.setOpaque(false);
+		for (Insights.DoorStat d : pair)
+		{
+			JPanel line = new JPanel(new BorderLayout(6, 0));
+			line.setOpaque(false);
+			line.add(Ui.label(d.encounter.getTitle(), Theme.small(), Theme.TEXT_MUTED), BorderLayout.CENTER);
+			JLabel time = Ui.label(d.runs + "x  " + Format.ticks(d.typical), Theme.small(),
+				d == quick && gap != 0 ? Theme.GREEN : Theme.TEXT);
+			line.add(time, BorderLayout.EAST);
+			block.add(line);
+		}
+		block.add(Ui.label(gap == 0 ? "Level either way" : quick.encounter.getShortName() + " is " + Format.span(gap) + " quicker for you",
+			Theme.small(), gap == 0 ? Theme.TEXT_FAINT : Theme.GOLD));
+		block.setToolTipText("Typical room through each door in this party size, from " + a.runs + " and " + b.runs + " runs.");
+		return block;
+	}
+
+	private static JComponent twoLine(String title, String sub, String value, String valueSub, Color color)
+	{
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setOpaque(false);
+		JPanel left = new JPanel(new GridLayout(2, 1));
+		left.setOpaque(false);
+		left.add(Ui.label(title, Theme.body(), Theme.TEXT));
+		left.add(Ui.label(sub, Theme.small(), Theme.TEXT_FAINT));
+		row.add(left, BorderLayout.CENTER);
+		JPanel right = new JPanel(new GridLayout(2, 1));
+		right.setOpaque(false);
+		JLabel v = Ui.label(value, Theme.body(), color);
+		v.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		JLabel vs = Ui.label(valueSub, Theme.small(), Theme.TEXT_FAINT);
+		vs.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		right.add(v);
+		right.add(vs);
+		row.add(right, BorderLayout.EAST);
+		return row;
+	}
+
+	/** Everything a run can have done to it: a role, a note, its splits to share, or deleting it. */
+	private JPopupMenu runMenu(Run r, int bucket)
+	{
+		JPopupMenu popup = new JPopupMenu();
+		JMenu role = new JMenu("Role");
+		for (String name : Run.ROLES)
+		{
+			JCheckBoxMenuItem item = new JCheckBoxMenuItem(name, name.equals(r.getRole()));
+			item.addActionListener(e -> onRole.accept(r.getStartedAt(), name.equals(r.getRole()) ? null : name));
+			role.add(item);
+		}
+		popup.add(role);
+		JMenuItem note = new JMenuItem(r.getNote() == null ? "Write a note..." : "Edit the note...");
+		note.addActionListener(e ->
+		{
+			Object answer = JOptionPane.showInputDialog(this, "A note on this run, up to " + Run.NOTE_LENGTH + " characters:",
+				"Note", JOptionPane.PLAIN_MESSAGE, null, null, r.getNote() == null ? "" : r.getNote());
+			if (answer != null)
+			{
+				onNote.accept(r.getStartedAt(), answer.toString());
+			}
+		});
+		popup.add(note);
+		JMenuItem copy = new JMenuItem("Copy splits");
+		copy.addActionListener(e ->
+		{
+			Comparison pb = Comparison.of(runs(), bucket, Comparison.Mode.PERSONAL_BEST, r);
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(Share.splits(r, pb)), null);
+		});
+		popup.add(copy);
+		popup.addSeparator();
+		JPopupMenu delete = menu("Delete this run",
+			"Delete the " + describe(r) + " from " + Format.day(r.getStartedAt()) + " at " + Format.time(r.getStartedAt())
+				+ "? Its times leave your records for good.",
+			() -> onDeleteRun.accept(r.getStartedAt()));
+		popup.add(delete.getComponent(0));
+		return popup;
 	}
 
 	private static int totalClears(Archive a)

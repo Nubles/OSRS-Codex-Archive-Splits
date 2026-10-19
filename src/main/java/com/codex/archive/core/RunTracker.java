@@ -118,6 +118,19 @@ public class RunTracker
 		}
 	}
 
+	/** Notes the other raiders seen before the first boss falls, by name. */
+	public void seeCrew(Iterable<String> names)
+	{
+		if (run == null || nextRow() > 0 || names == null)
+		{
+			return;
+		}
+		for (String name : names)
+		{
+			run.addCrew(name);
+		}
+	}
+
 	/**
 	 * Names the encounter an NPC belongs to. Two bosses have no name in the game's data yet, so a
 	 * big NPC that matches nothing, met in the row one of them guards, is taken to be that boss.

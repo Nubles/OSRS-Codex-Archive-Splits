@@ -1,5 +1,6 @@
 package com.codex.archive;
 
+import com.codex.archive.core.Comparison;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -38,6 +39,17 @@ public interface CodexArchiveConfig extends Config
 	default boolean chatSplits()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "compareTo",
+		name = "Compare against",
+		description = "What each boss's time is measured against: your best run, your best rooms strung together, or your typical run (the median of each room over your last 10 clears)",
+		position = 2
+	)
+	default Comparison.Mode compareTo()
+	{
+		return Comparison.Mode.PERSONAL_BEST;
 	}
 
 	@ConfigItem(
