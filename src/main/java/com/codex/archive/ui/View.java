@@ -64,7 +64,7 @@ public final class View
 		this.liveBest = archive == null || shownRun == null ? null : bestBefore(archive, shownRun);
 		this.compare = compare == null ? Comparison.Mode.PERSONAL_BEST : compare;
 		this.comparison = archive == null || shownRun == null ? null
-			: Comparison.of(archive.getRuns(), Records.bucket(shownRun.getTeamSize()), this.compare, shownRun);
+			: Comparison.of(archive, Records.bucket(shownRun.getTeamSize()), this.compare, shownRun);
 		this.bestRooms = archive == null || shownRun == null ? new int[0] : bestRooms(archive, shownRun);
 	}
 
@@ -94,6 +94,12 @@ public final class View
 			}
 		}
 		return best;
+	}
+
+	/** What the shown run is really measured against: a goal mode with no goal set falls back on the best. */
+	public Comparison.Mode measuredAgainst()
+	{
+		return comparison != null ? comparison.getMode() : compare;
 	}
 
 	/** Whether any supply has a target at all; with none, there is no pack check. */

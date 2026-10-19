@@ -8,6 +8,8 @@ import java.util.List;
  * What a run is measured against: when each boss should be down by. Your best run is the
  * classic mark; your best rooms strung together is the run of a perfect day; your typical run
  * (the median of each room over recent clears) says whether today is a good day or a bad one.
+ * A goal time is the run you are working towards: its total set by the player, shared out among
+ * the rooms in the proportions your own runs take, so each boss has a mark on the way.
  */
 public final class Comparison
 {
@@ -18,7 +20,8 @@ public final class Comparison
 	{
 		PERSONAL_BEST("Personal best", "PB", "your best"),
 		BEST_ROOMS("Best rooms", "Golds", "your best rooms"),
-		TYPICAL("Typical run", "Typical", "your typical run");
+		TYPICAL("Typical run", "Typical", "your typical run"),
+		GOAL("Goal time", "Goal", "your goal");
 
 		private final String label;
 		private final String shortLabel;
@@ -70,6 +73,25 @@ public final class Comparison
 	 */
 	public static Comparison of(List<Run> runs, int bucket, Mode mode, Run exclude)
 	{
+		return of(runs, bucket, mode, exclude, 0);
+	}
+
+	/** The marks from an archive, with the goal set for the party size. */
+	public static Comparison of(Archive archive, int bucket, Mode mode, Run exclude)
+	{
+		return of(archive.getRuns(), bucket, mode, exclude, archive.goal(bucket));
+	}
+
+	/**
+	 * @param goal the goal time for the party size in ticks, or 0 for none; without one, the goal
+	 *     mode falls back on the personal best
+	 */
+	public static Comparison of(List<Run> runs, int bucket, Mode mode, Run exclude, int goal)
+	{
+		if (mode == Mode.GOAL)
+		{
+			return goal > 0 ? goal(runs, bucket, exclude, goal) : of(runs, bucket, Mode.PERSONAL_BEST, exclude, 0);
+		}
 		int[] ends = new int[Encounter.ROWS];
 		int[] rooms = new int[Encounter.ROWS];
 		Arrays.fill(ends, -1);
@@ -116,6 +138,87 @@ public final class Comparison
 			ends[row] = sum;
 		}
 		return new Comparison(mode, ends, rooms);
+	}
+
+	/**
+	 * A goal time shared out among the rooms: in the proportions of your typical run when every row
+	 * has one, else of your best rooms, else of your best run. Rounded so the rooms add up to the
+	 * goal exactly. With no runs to take a shape from, only the whole run has a mark.
+	 */
+	private static Comparison goal(List<Run> runs, int bucket, Run exclude, int goal)
+	{
+		int[] shape = null;
+		for (Mode m : new Mode[]{Mode.TYPICAL, Mode.BEST_ROOMS, Mode.PERSONAL_BEST})
+		{
+			Comparison c = of(runs, bucket, m, exclude, 0);
+			int[] rooms = new int[Encounter.ROWS];
+			boolean whole = true;
+			for (int row = 0; row < Encounter.ROWS; row++)
+			{
+				rooms[row] = c.room(row);
+				whole &= rooms[row] > 0;
+			}
+			if (whole)
+			{
+				shape = rooms;
+				break;
+			}
+		}
+		int[] ends = new int[Encounter.ROWS];
+		int[] rooms = new int[Encounter.ROWS];
+		Arrays.fill(ends, -1);
+		Arrays.fill(rooms, -1);
+		if (shape == null)
+		{
+			ends[Encounter.ROWS - 1] = goal;
+			return new Comparison(Mode.GOAL, ends, rooms);
+		}
+		int[] shared = share(shape, goal);
+		System.arraycopy(shared, 0, rooms, 0, rooms.length);
+		int sum = 0;
+		for (int row = 0; row < Encounter.ROWS; row++)
+		{
+			sum += rooms[row];
+			ends[row] = sum;
+		}
+		return new Comparison(Mode.GOAL, ends, rooms);
+	}
+
+	/**
+	 * A total shared out among the rows in proportion to a shape, rounded by largest remainders so
+	 * the rows add up to the total exactly.
+	 */
+	static int[] share(int[] shape, int goal)
+	{
+		long total = 0;
+		for (int t : shape)
+		{
+			total += t;
+		}
+		int[] rooms = new int[shape.length];
+		double[] exact = new double[shape.length];
+		int given = 0;
+		for (int row = 0; row < shape.length; row++)
+		{
+			exact[row] = goal * (double) shape[row] / total;
+			rooms[row] = (int) Math.floor(exact[row]);
+			given += rooms[row];
+		}
+		while (given < goal)
+		{
+			int pick = 0;
+			for (int row = 1; row < shape.length; row++)
+			{
+				if (exact[row] - rooms[row] > exact[pick] - rooms[pick])
+				{
+					pick = row;
+				}
+			}
+			rooms[pick]++;
+			exact[pick] = rooms[pick];
+			given++;
+		}
+		return rooms;
 	}
 
 	/** The median room over the newest completed runs that timed this row, or -1. */

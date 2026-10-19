@@ -4,10 +4,12 @@ import com.codex.archive.core.Archive;
 import com.codex.archive.core.Comparison;
 import com.codex.archive.core.Drop;
 import com.codex.archive.core.Encounter;
+import com.codex.archive.core.Goal;
 import com.codex.archive.core.Insights;
 import com.codex.archive.core.Outcome;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
+import com.codex.archive.core.Sessions;
 import com.codex.archive.core.Spoils;
 import com.codex.archive.core.Split;
 import com.codex.archive.core.Stats;
@@ -50,6 +52,7 @@ public class ArchivePanel extends PluginPanel
 	private static final int HISTORY = 12;
 	private static final int DROPS = 10;
 	private static final int CREW = 6;
+	private static final int SESSIONS = 5;
 
 	private final Crest crest = new Crest();
 	private final Segmented tabs = new Segmented(true, "Run", "Records", "Spoils");
@@ -70,6 +73,7 @@ public class ArchivePanel extends PluginPanel
 	private BiConsumer<Long, String> onRole = (t, r) -> { };
 	private BiConsumer<Long, String> onNote = (t, n) -> { };
 	private Runnable onExport = () -> { };
+	private BiConsumer<Integer, Integer> onGoal = (b, t) -> { };
 	/** What the run page was last built from; while it holds, a tick only repaints the thread. */
 	private String runKey;
 	/** What the records page was built from, so it is only rebuilt when the history changes. */
@@ -135,6 +139,12 @@ public class ArchivePanel extends PluginPanel
 	}
 
 	/** What the panel asks of the plugin to save the history as a spreadsheet. */
+	/** Called with a party-size group and its new goal in ticks, 0 to clear it. */
+	public void onGoal(BiConsumer<Integer, Integer> goal)
+	{
+		onGoal = goal;
+	}
+
 	public void onExport(Runnable export)
 	{
 		onExport = export;
@@ -213,7 +223,7 @@ public class ArchivePanel extends PluginPanel
 			String room = split == null ? (row >= Encounter.ROWS ? "Cleared" : "Walking") : split.getEncounter().getShortName();
 			int possible = Comparison.bestPossible(live, view.bestRooms, live.getTicks());
 			crest.update(heading, Format.clock(live.getTicks()), Records.BUCKETS[bucket].toLowerCase(), true, null,
-				new String[]{"Room", view.compare.getShortLabel(), "Can hit"},
+				new String[]{"Room", view.measuredAgainst().getShortLabel(), "Can hit"},
 				new String[]{room, delta == null ? "-" : Format.delta(delta), possible < 0 ? "-" : Format.clock(possible)},
 				new Color[]{Theme.mix(Theme.TEAL, Theme.TEXT, 0.4), delta == null ? Theme.TEXT_FAINT : Theme.delta(delta), Theme.GOLD});
 			return;
@@ -267,8 +277,9 @@ public class ArchivePanel extends PluginPanel
 		int bucket = Records.bucket(run.getTeamSize());
 		// Against itself every delta is nothing; a finished run is measured against the runs before it.
 		Run best = bestExcept(runs(), bucket, run);
+		Comparison against = live ? view.comparison : Comparison.of(view.archive, bucket, view.compare, run);
 		String trailing = (live ? "live, " + Records.BUCKETS[bucket].toLowerCase() : Format.ago(view.now - run.getStartedAt()))
-			+ ", vs " + view.compare.getShortLabel();
+			+ ", vs " + (against == null ? view.compare : against.getMode()).getShortLabel();
 		stack.add(new SectionHeader(live ? "This run" : "Last run", trailing));
 		if (live)
 		{
@@ -276,7 +287,7 @@ public class ArchivePanel extends PluginPanel
 		}
 		else
 		{
-			table.update(run, Comparison.of(runs(), bucket, view.compare, run), View.bestRooms(view.archive, run), run.getTicks(), false);
+			table.update(run, against, View.bestRooms(view.archive, run), run.getTicks(), false);
 		}
 		stack.add(table);
 
@@ -289,6 +300,11 @@ public class ArchivePanel extends PluginPanel
 		{
 			usedCard.update(used, null);
 			stack.add(usedCard);
+		}
+		Sessions.Session session = live ? null : Sessions.current(runs(), view.now);
+		if (session != null && session.getRuns().size() > 1)
+		{
+			session(stack, session);
 		}
 		setPage(runPage, stack);
 	}
@@ -429,6 +445,7 @@ public class ArchivePanel extends PluginPanel
 		int allWipes = view.archive.wipes(bucket);
 		grid.add(new StatTile(Format.count(allClears), "Clears", allWipes == 0 ? "no wipes" : Format.count(allWipes) + (allWipes == 1 ? " wipe" : " wipes"), Theme.TEXT));
 		stack.add(grid);
+		goal(stack, runs, bucket);
 
 		stack.add(new SectionHeader("Best rooms", "and a typical one"));
 		stack.add(rooms(runs, bucket));
@@ -502,6 +519,24 @@ public class ArchivePanel extends PluginPanel
 		{
 			stack.add(Ui.wrapped("Right-click a run to note your role, write a note, copy its splits or delete one the plugin timed wrongly.",
 				Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
+
+		List<Sessions.Session> sittings = Sessions.of(runs);
+		if (sittings.size() > 1)
+		{
+			stack.add(new SectionHeader("Sessions", sittings.size() > SESSIONS ? "latest " + SESSIONS : null));
+			Card card = new Card(new GridLayout(0, 1, 0, 4));
+			for (int i = sittings.size() - 1; i >= Math.max(0, sittings.size() - SESSIONS); i--)
+			{
+				Sessions.Session t = sittings.get(i);
+				String pace = t.perHour() > 0 ? String.format(java.util.Locale.ENGLISH, ", %.1f an hour", t.perHour()) : "";
+				String sub = t.getBest() < 0 ? "no clear" : t.getBests() == 1 ? "new best" : t.getBests() > 1 ? t.getBests() + " new bests"
+					: "best of " + t.getClears();
+				card.add(twoLine(Format.day(t.getStart()), t.getRuns().size() + (t.getRuns().size() == 1 ? " run" : " runs") + pace,
+					t.getBest() < 0 ? "-" : Format.ticks(t.getBest()), sub,
+					t.getBests() > 0 ? Theme.GOLD_BRIGHT : Theme.TEXT));
+			}
+			stack.add(card);
 		}
 
 		List<Insights.Mate> crew = Insights.crew(runs, bucket);
@@ -596,6 +631,121 @@ public class ArchivePanel extends PluginPanel
 			stack.add(Ui.wrapped("Right-click a purple that never dropped to remove it.", Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		}
 		setPage(spoilsPage, stack);
+	}
+
+	/** The sitting the last run belongs to: clears, pace, average, time between runs, and any best or purple. */
+	private void session(StackPanel stack, Sessions.Session t)
+	{
+		stack.add(new SectionHeader("This session", "since " + Format.time(t.getStart())));
+		JPanel grid = new JPanel(new GridLayout(2, 2, 6, 6));
+		grid.setOpaque(false);
+		grid.add(new StatTile(String.valueOf(t.getClears()), "Clears", t.getWipes() == 0 ? "no wipes" : t.getWipes() + (t.getWipes() == 1 ? " wipe" : " wipes"),
+			Theme.TEXT));
+		grid.add(new StatTile(t.perHour() > 0 ? String.format(java.util.Locale.ENGLISH, "%.1f", t.perHour()) : "-", "An hour", "clears", Theme.TEAL));
+		grid.add(new StatTile(t.getAverage() < 0 ? "-" : Format.ticks(t.getAverage()), "Average",
+			t.getBest() < 0 ? "no clear yet" : "best " + Format.ticks(t.getBest()), Theme.TEXT));
+		grid.add(new StatTile(t.getBetween() < 0 ? "-" : Format.clock((int) (t.getBetween() / 600)), "Downtime", "between runs", Theme.TEXT));
+		stack.add(grid);
+		java.util.List<String> parts = new java.util.ArrayList<>();
+		if (t.getBests() > 0)
+		{
+			parts.add(t.getBests() == 1 ? "a new personal best" : t.getBests() + " new personal bests");
+		}
+		if (t.getPurples() > 0)
+		{
+			parts.add(t.getPurples() == 1 ? "a purple" : t.getPurples() + " purples");
+		}
+		if (!parts.isEmpty())
+		{
+			stack.add(Ui.wrapped("This session: " + String.join(" and ", parts) + ".", Theme.small(),
+				t.getPurples() > 0 ? Theme.PURPLE : Theme.GOLD, WIDTH - 16));
+		}
+	}
+
+	/**
+	 * The goal for a party size: how far the best is from it, how often it has been beaten, and the
+	 * rooms where a typical run loses most against the goal's share. With none set, a way to set one.
+	 */
+	private void goal(StackPanel stack, List<Run> runs, int bucket)
+	{
+		int ticks = view.archive.goal(bucket);
+		Goal g = Goal.of(runs, bucket, ticks);
+		String party = Records.BUCKETS[bucket].toLowerCase();
+		JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
+		buttons.setOpaque(false);
+		buttons.add(new CodexButton(g == null ? "Set a goal time" : "Change goal", g == null, () -> askGoal(bucket, ticks)));
+		if (g == null)
+		{
+			Card card = new Card(new BorderLayout(0, 6));
+			card.add(Ui.wrapped("Set the time you are working towards for " + party + " runs, and see how far off it is and which rooms hold you back. "
+				+ "Choose Goal time under Compare against in the settings to race it room by room.", Theme.small(), Theme.TEXT_MUTED, WIDTH - 30),
+				BorderLayout.CENTER);
+			card.add(buttons, BorderLayout.SOUTH);
+			stack.add(card);
+			return;
+		}
+		buttons.add(new CodexButton("Clear", false, () -> onGoal.accept(bucket, 0)));
+		stack.add(new SectionHeader("Goal", Format.clock(g.getGoal()) + " " + party));
+		Card card = new Card(new BorderLayout(0, 6));
+		card.accent(g.getBeaten() > 0 ? Theme.GREEN : Theme.GOLD);
+		JPanel lines = new JPanel(new GridLayout(0, 1, 0, 3));
+		lines.setOpaque(false);
+		if (g.getBest() < 0)
+		{
+			lines.add(line("Your best", "no clear yet", Theme.TEXT_FAINT));
+		}
+		else if (g.gap() > 0)
+		{
+			lines.add(line("Your best", Format.ticks(g.getBest()), Theme.TEXT));
+			lines.add(line("Still to find", Format.span(g.gap()), Theme.EMBER));
+		}
+		else
+		{
+			lines.add(line("Your best", Format.ticks(g.getBest()), Theme.GREEN));
+			lines.add(line("Beaten", g.getBeaten() + (g.getBeaten() == 1 ? " time" : " times"), Theme.GREEN));
+			if (g.getFirst() != null)
+			{
+				lines.add(line("First on", Format.shortDay(g.getFirst().getStartedAt()), Theme.TEXT));
+			}
+		}
+		int shown = 0;
+		for (Goal.Row r : g.getRows())
+		{
+			if (r.over() <= 0 || shown >= 3)
+			{
+				continue;
+			}
+			if (shown++ == 0)
+			{
+				lines.add(Ui.label("Where a typical run loses it", Theme.small(), Theme.GOLD_DIM));
+			}
+			JComponent l = line(Encounter.rowLabel(r.row), "+" + Format.span(r.over()), Theme.EMBER);
+			l.setToolTipText("A typical room here takes " + Format.ticks(r.typical) + "; the goal allows " + Format.ticks(r.allowed) + ".");
+			lines.add(l);
+		}
+		card.add(lines, BorderLayout.CENTER);
+		card.add(buttons, BorderLayout.SOUTH);
+		stack.add(card);
+	}
+
+	/** Asks for a goal time, and passes on what was typed once it reads as a time. */
+	private void askGoal(int bucket, int current)
+	{
+		String party = Records.BUCKETS[bucket].toLowerCase();
+		Object answer = JOptionPane.showInputDialog(this, "Goal time for " + party + " runs, in minutes and seconds (for example 20:00):",
+			"Goal time", JOptionPane.PLAIN_MESSAGE, null, null, current > 0 ? Format.clock(current) : "");
+		if (answer == null)
+		{
+			return;
+		}
+		int ticks = Goal.parse(answer.toString());
+		if (ticks <= 0)
+		{
+			JOptionPane.showMessageDialog(this, "\"" + answer + "\" is not a time. Write it like 20:00 or 19:42.6.", "Goal time",
+				JOptionPane.WARNING_MESSAGE);
+			return;
+		}
+		onGoal.accept(bucket, ticks);
 	}
 
 	/** Each row's best room with a bar for what a typical run lately gives away, the worst row lit. */

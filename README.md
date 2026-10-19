@@ -13,7 +13,9 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
 ## What it does
 
 - **Run.** The five encounters of your run, drawn as a thread from the Guardian down to the hooded figure. Each boss that falls shows its room time and the run's time when it fell, with a green or red tag for how far ahead or behind your best you are. The boss you're fighting glows, with your best's time at that boss as the mark to beat, and a red tag once you've passed it. Rows you haven't reached show your best's time too. After a run you get its time, how it compares with your previous best, deaths, and how much food and how many potion doses it used.
-- **Compare against what matters to you.** Each boss is measured against your choice of your personal best run, your best rooms strung together (golds), or your typical run (the median of each room over your last 10 clears). Each fallen boss also shows what its room alone gave away against your best room, and the crest and plaque show the best time the run can still hit if every room left goes as well as it ever has.
+- **Compare against what matters to you.** Each boss is measured against your choice of your personal best run, your best rooms strung together (golds), your typical run (the median of each room over your last 10 clears), or a goal time you set. Each fallen boss also shows what its room alone gave away against your best room, and the crest and plaque show the best time the run can still hit if every room left goes as well as it ever has.
+- **Goal time.** Set a goal for a party size (say 20:00) and the Records page shows how far your best is from it, the date you first beat it, and the three rooms where a typical run loses the most against the goal's pace. The goal is split across the rooms in the shape of your best rooms, so you can pick it as the thing every split is measured against, and the chat line tells you the first time you beat it.
+- **Sessions.** Runs less than 45 minutes apart count as one sitting. After a run, the Run page shows this session's clears, clears an hour, average time and the downtime between runs, plus any new best or purple it brought; the Records page lists your last five sessions with their pace and best.
 - **Records.** Per party size (solo, duo, trio, 4, 5, 6+): your best time, your sum of best (every row's fastest room added together), the average of your last 10 clears, and clears and wipes. Then the best room for each row with a bar for what a typical run lately gives away there, the worst row lit, and the best fight for each of the eight bosses.
 - **Steadiness and doors.** A chart of your last 20 clears with your best and typical times, how much your runs vary, how many times you've set a new best and your clear rate. For each row where you've taken both doors at least three times, which one is quicker for you and by how much.
 - **Crew and notes.** The raiders you were with are noted on every run, and the Records page lists who you raid with most and your best clear together. Right-click a run to note your role (tank, melee, ranged, magic, support, learner) or write a note on it, which shows on the run and in the export.
@@ -29,6 +31,9 @@ It is the seventh plugin in the **Codex** suite, after [Codex Navigator](https:/
   <br>
   <img src="docs/screenshots/plaque.png" alt="Live plaque">
   <img src="docs/screenshots/pack-plaque.png" alt="Pack plaque">
+  <br>
+  <img src="docs/screenshots/goal.png" width="225" alt="Goal time on the Records page">
+  <img src="docs/screenshots/session.png" width="225" alt="This session after a run">
 </p>
 
 ## How it times

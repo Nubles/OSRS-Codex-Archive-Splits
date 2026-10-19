@@ -4,6 +4,7 @@ import com.codex.archive.core.Archive;
 import com.codex.archive.core.Comparison;
 import com.codex.archive.core.Export;
 import com.codex.archive.core.Encounter;
+import com.codex.archive.core.Goal;
 import com.codex.archive.core.LootWatch;
 import com.codex.archive.core.Messages;
 import com.codex.archive.core.Presence;
@@ -168,6 +169,11 @@ public class CodexArchivePlugin extends Plugin
 		panel.onDelete(this::deleteRun, this::deleteDrop);
 		panel.onNotes((at, role) -> annotate(a -> a.setRole(at, role)), (at, note) -> annotate(a -> a.setNote(at, note)));
 		panel.onExport(this::export);
+		panel.onGoal((bucket, ticks) -> annotate(a ->
+		{
+			a.setGoal(bucket, ticks);
+			return true;
+		}));
 		clientThread.invokeLater(() ->
 		{
 			loadProfile();
@@ -748,7 +754,9 @@ public class CodexArchivePlugin extends Plugin
 			return;
 		}
 		Comparison.Mode mode = config.compareTo();
-		Integer delta = Comparison.of(archive.getRuns(), Records.bucket(live.getTeamSize()), mode, live).delta(live, row);
+		Comparison against = Comparison.of(archive, Records.bucket(live.getTeamSize()), mode, live);
+		Integer delta = against.delta(live, row);
+		mode = against.getMode();
 		ChatMessageBuilder line = new ChatMessageBuilder()
 			.append(ChatColorType.HIGHLIGHT).append(split.getEncounter().getShortName())
 			.append(ChatColorType.NORMAL).append(" down at " + Format.ticks(split.getEndTick()));
@@ -789,6 +797,12 @@ public class CodexArchivePlugin extends Plugin
 		else
 		{
 			line.append(", " + Format.versus(run.getTicks() - best.getTicks()) + ".");
+		}
+		int goal = archive.goal(bucket);
+		if (goal > 0 && run.getTicks() <= goal && Goal.of(archive.getRuns(), bucket, goal).getBeaten() == 1)
+		{
+			// The history already holds this run, so it is the only one under the goal.
+			line.append(ChatColorType.HIGHLIGHT).append(" Your goal of " + Format.clock(goal) + " is beaten for the first time.");
 		}
 		chat(line);
 	}

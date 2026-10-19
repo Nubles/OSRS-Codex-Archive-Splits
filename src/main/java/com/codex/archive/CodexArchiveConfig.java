@@ -44,7 +44,7 @@ public interface CodexArchiveConfig extends Config
 	@ConfigItem(
 		keyName = "compareTo",
 		name = "Compare against",
-		description = "What each boss's time is measured against: your best run, your best rooms strung together, or your typical run (the median of each room over your last 10 clears)",
+		description = "What each boss's time is measured against: your best run, your best rooms strung together, your typical run (the median of each room over your last 10 clears), or the goal time you set on the Records page, shared out among the rooms as your runs take them",
 		position = 2
 	)
 	default Comparison.Mode compareTo()

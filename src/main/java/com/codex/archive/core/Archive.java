@@ -28,6 +28,8 @@ public class Archive
 	/** Clears and wipes by party-size group, for the whole history, kept runs or not. */
 	private int[] clears;
 	private int[] wipes;
+	/** The goal time for each party-size group, in ticks; 0 where none is set. */
+	private int[] goals;
 
 	public List<Run> getRuns()
 	{
@@ -59,6 +61,31 @@ public class Archive
 	public int wipes(int bucket)
 	{
 		return bucket >= 0 && wipes != null && bucket < wipes.length ? wipes[bucket] : 0;
+	}
+
+	/** The goal time set for a party-size group, in ticks, or 0 when there is none. */
+	public int goal(int bucket)
+	{
+		return goals != null && bucket >= 0 && bucket < goals.length ? Math.max(0, goals[bucket]) : 0;
+	}
+
+	/** Sets the goal time for a party-size group, or clears it with 0. */
+	public void setGoal(int bucket, int ticks)
+	{
+		if (bucket < 0 || bucket >= Records.BUCKETS.length)
+		{
+			return;
+		}
+		if (goals == null || goals.length != Records.BUCKETS.length)
+		{
+			int[] grown = new int[Records.BUCKETS.length];
+			if (goals != null)
+			{
+				System.arraycopy(goals, 0, grown, 0, Math.min(goals.length, grown.length));
+			}
+			goals = grown;
+		}
+		goals[bucket] = Math.max(0, ticks);
 	}
 
 	/** The longest it has taken to see a purple, the current streak included. */
