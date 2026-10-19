@@ -32,6 +32,22 @@ public class ArchiveTest
 	}
 
 	@Test
+	public void thePanelsCopyIsNotChangedByRemovingAPurple()
+	{
+		// The panel draws its copy on the Swing thread while the client thread changes the archive.
+		Archive a = new Archive();
+		a.record(clear(1_000), null, 0);
+		a.purple("Zeal", 1_500);
+		a.record(clear(2_000), null, 0);
+		a.purple("Rondache", 2_500);
+		Archive copy = a.copy();
+		assertEquals(1, copy.getDrops().get(1).getDry());
+		assertTrue(a.removeDrop(1_500, "Zeal"));
+		assertEquals(2, a.getDrops().get(0).getDry());
+		assertEquals(1, copy.getDrops().get(1).getDry());
+	}
+
+	@Test
 	public void twoPurplesInOneRun()
 	{
 		Archive a = new Archive();

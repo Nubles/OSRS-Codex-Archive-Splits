@@ -483,8 +483,11 @@ public class Archive
 		{
 			a.runs.add(r.copy());
 		}
-		// A purple is never changed once logged, so the copy shares them.
-		a.drops.addAll(drops);
+		// Removing a purple gives its clears to the next one, so each is copied too.
+		for (Drop d : drops)
+		{
+			a.drops.add(new Drop(d.getUnique(), d.getAt(), d.getKc(), d.getDry()));
+		}
 		a.kc = kc;
 		a.dry = dry;
 		a.clears = clears == null ? null : clears.clone();
