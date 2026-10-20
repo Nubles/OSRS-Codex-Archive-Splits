@@ -30,7 +30,7 @@ public enum Supply
 		"tangled toad's legs", "summer pie", "half a summer pie", "wild pie", "half a wild pie",
 		"botanical pie", "half a botanical pie", "admiral pie", "half an admiral pie", "cooked jubbly",
 		"basket of strawberries", "jug of wine", "blighted manta ray", "blighted anglerfish", "blighted karambwan",
-		"paddlefish", "ascension ration"));
+		"paddlefish", "leftovers"));
 
 	private final String title;
 	private final String unit;

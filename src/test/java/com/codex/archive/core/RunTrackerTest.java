@@ -110,24 +110,6 @@ public class RunTrackerTest
 	}
 
 	@Test
-	public void unnamedBossesAreKnownByTheirRow()
-	{
-		RunTracker t = new RunTracker();
-		t.begin(0, 0, 3, null);
-		assertNull(t.resolve("Mysterious warden", 300));
-		fight(t, Encounter.GUARDIAN, 1, 10);
-		fight(t, Encounter.BORK, 20, 30);
-		assertEquals(Encounter.NECROMANCER, t.resolve("Mysterious warden", 300));
-		assertNull("small NPCs are minions", t.resolve("Skeleton", 60));
-		assertEquals(Encounter.DREADNOTH, t.resolve("Dreadnoth the Jellied", 400));
-		fight(t, Encounter.DREADNOTH, 40, 50);
-		assertNull(t.resolve("Something big", 300));
-		fight(t, Encounter.XARTH, 60, 70);
-		assertEquals(Encounter.HOODED_FIGURE, t.resolve("<col=ff0000>???</col>", 900));
-		assertNull("no run, no guesses", new RunTracker().resolve("Mysterious warden", 300));
-	}
-
-	@Test
 	public void aMissedFallClosesWhenTheNextBossIsHit()
 	{
 		RunTracker t = new RunTracker();
@@ -209,25 +191,6 @@ public class RunTrackerTest
 		t.engage(Encounter.GUARDIAN, 200);
 		assertEquals(1, t.nextRow());
 		assertEquals(60, t.view(201).split(0).getEndTick());
-	}
-
-	@Test
-	public void aGuessAtAnUnnamedBossGivesWayToTheNamedOne()
-	{
-		RunTracker t = new RunTracker();
-		t.begin(0, 0, 3, null);
-		fight(t, Encounter.GUARDIAN, 1, 10);
-		fight(t, Encounter.BORK, 20, 30);
-		// A big add in the Dreadnoth room is hit first and taken for the Necromancer.
-		Encounter guess = t.resolve("Jellied spawn", 200);
-		assertEquals(Encounter.NECROMANCER, guess);
-		t.engage(guess, 45);
-		t.engage(Encounter.DREADNOTH, 50);
-		fight(t, Encounter.DREADNOTH, 51, 120);
-		Split s = t.view(140).split(2);
-		assertEquals(Encounter.DREADNOTH, s.getEncounter());
-		assertEquals(50, s.getEngageTick());
-		assertEquals(120, s.getEndTick());
 	}
 
 	@Test
@@ -314,57 +277,4 @@ public class RunTrackerTest
 		assertTrue(t.purples().isEmpty());
 	}
 
-	@Test
-	public void aGuessedAddThatDiedFirstStillGivesWayToTheNamedBoss()
-	{
-		RunTracker t = new RunTracker();
-		t.begin(0, 0, 3, null);
-		fight(t, Encounter.GUARDIAN, 1, 10);
-		fight(t, Encounter.BORK, 20, 30);
-		// A big add is hit first, taken for the Necromancer, and dies before Dreadnoth is touched.
-		Encounter guess = t.resolve("Jellied spawn", 200);
-		assertEquals(Encounter.NECROMANCER, guess);
-		fight(t, guess, 45, 60);
-		assertEquals(3, t.nextRow());
-		// Long after the add, the row's real boss.
-		t.engage(Encounter.DREADNOTH, 150);
-		assertEquals("the guessed split reopens for the named boss", 2, t.nextRow());
-		fight(t, Encounter.DREADNOTH, 151, 300);
-		Split s = t.view(320).split(2);
-		assertEquals(Encounter.DREADNOTH, s.getEncounter());
-		assertEquals(30, s.getStartTick());
-		assertEquals(150, s.getEngageTick());
-		assertEquals(300, s.getEndTick());
-		assertEquals(1, countRow(t.view(320), 2));
-	}
-
-	@Test
-	public void aReopenedGuessCanStillGiveWayToTheNamedBoss()
-	{
-		RunTracker t = new RunTracker();
-		t.begin(0, 0, 3, null);
-		fight(t, Encounter.GUARDIAN, 1, 10);
-		fight(t, Encounter.BORK, 20, 30);
-		Encounter guess = t.resolve("Jellied spawn", 200);
-		fight(t, guess, 45, 60);
-		// Another big add within the reopen window reopens the guess.
-		Encounter again = t.resolve("Jellied spawn", 200);
-		assertEquals(Encounter.NECROMANCER, again);
-		t.engage(again, 80);
-		assertEquals(2, t.nextRow());
-		t.engage(Encounter.DREADNOTH, 90);
-		fight(t, Encounter.DREADNOTH, 91, 200);
-		assertEquals(Encounter.DREADNOTH, t.view(220).split(2).getEncounter());
-		assertEquals(90, t.view(220).split(2).getEngageTick());
-	}
-
-	private static int countRow(Run run, int row)
-	{
-		int n = 0;
-		for (Split s : run.getSplits())
-		{
-			n += s.getEncounter().getRow() == row ? 1 : 0;
-		}
-		return n;
-	}
 }

@@ -388,7 +388,7 @@ public class ArchivePanel extends PluginPanel
 		Run run = view.live != null ? view.live : view.archive.last();
 		if (run == null)
 		{
-			stack.add(note("No runs yet", "Enter the archive and your first run is timed from the moment the doors close. Each boss gets a split as it falls; the Guardian and the hooded figure always, and whichever door you take in the three rows between."));
+			stack.add(note("No runs yet", "Enter the archive and your first run is timed from the moment the doors close. Each boss gets a split as it falls; the Guardian and Ocellus always, and whichever door you take in the three rows between."));
 			setPage(runPage, stack);
 			return;
 		}

@@ -34,33 +34,11 @@ public class DoubtsTest
 		fight(t, Encounter.BORK, "Bork", 267, 70, 150);
 		fight(t, Encounter.DREADNOTH, "Dreadnoth the Jellied", 400, 170, 250);
 		fight(t, Encounter.XARTH, "Xarth", 380, 270, 350);
-		fight(t, Encounter.HOODED_FIGURE, "The Hooded Figure", 600, 370, 500);
+		fight(t, Encounter.HOODED_FIGURE, "Ocellus", 600, 370, 500);
 		Run run = t.finish(520, false);
 		assertTrue(run.isCompleted());
 		assertFalse(run.hasDoubts());
 		assertTrue(Doubts.of(run).isEmpty());
-	}
-
-	@Test
-	public void aBossToldBySizeSaysWhatItWasToldFrom()
-	{
-		RunTracker t = new RunTracker();
-		t.begin(0, 0, 1, null);
-		fight(t, Encounter.GUARDIAN, "Archive Guardian", 300, 5, 50);
-		fight(t, Encounter.BORK, "Bork", 267, 70, 150);
-		Encounter guess = t.resolve("Skeletal Archmage", 412);
-		assertEquals(Encounter.NECROMANCER, guess);
-		fight(t, guess, "Skeletal Archmage", 412, 170, 250);
-		fight(t, Encounter.XARTH, "Xarth", 380, 270, 350);
-		fight(t, Encounter.HOODED_FIGURE, "The Hooded Figure", 600, 370, 500);
-		Run run = t.finish(520, false);
-
-		Split necro = run.split(2);
-		assertEquals("Skeletal Archmage", necro.getSeen());
-		assertEquals(412, necro.getSeenLevel());
-		// The hooded figure was known by name, so only the one guess is told.
-		assertNull(run.split(4).getSeen());
-		assertEquals(Arrays.asList("Necromancer was told by its size: Skeletal Archmage, level 412."), Doubts.of(run));
 	}
 
 	@Test
@@ -115,7 +93,7 @@ public class DoubtsTest
 		t.foe("Smork", 160);
 		fight(t, Encounter.DREADNOTH, "Dreadnoth the Jellied", 400, 170, 250);
 		fight(t, Encounter.XARTH, "Xarth", 380, 270, 350);
-		fight(t, Encounter.HOODED_FIGURE, "The Hooded Figure", 600, 370, 500);
+		fight(t, Encounter.HOODED_FIGURE, "Ocellus", 600, 370, 500);
 		Run run = t.finish(520, false);
 		assertFalse(run.hasDoubts());
 	}

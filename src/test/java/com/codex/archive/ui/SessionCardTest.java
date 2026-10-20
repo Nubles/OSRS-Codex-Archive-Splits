@@ -136,7 +136,7 @@ public class SessionCardTest
 		String verdict = SessionCard.verdict(night, all);
 		assertTrue(verdict, !verdict.toLowerCase().contains("clear"));
 		// The deepest room is named in full, never only "Trio", which reads as a party size.
-		assertEquals("Furthest: the Hooded Figure", verdict);
+		assertEquals("Furthest: Ocellus", verdict);
 		// What the runs did get done instead: three bosses then four.
 		assertEquals(Arrays.asList("7", "Bosses", "felled"), Arrays.asList(SessionCard.tiles(night)[0]));
 

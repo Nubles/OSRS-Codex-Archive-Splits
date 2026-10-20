@@ -94,6 +94,8 @@ public class CodexArchivePlugin extends Plugin
 
 	/** The lobby's own NPCs: seeing one means the next instance is the archive. */
 	private static final String[] LOBBY_NPCS = {"record keeper", "general montoya"};
+	/** The same NPCs by id: the Record Keeper, the lobby's banker and General Montoya. */
+	private static final int[] LOBBY_NPC_IDS = {16692, 16704, 16705};
 
 	@Inject
 	private Client client;
@@ -312,9 +314,18 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onNpcSpawned(NpcSpawned event)
 	{
-		if (isLobbyNpc(event.getNpc()))
+		NPC npc = event.getNpc();
+		if (isLobbyNpc(npc))
 		{
 			presence.lobbyNpc(true, tick);
+			dirty = true;
+			return;
+		}
+		Encounter beaten = Encounter.fallMarker(npc.getId());
+		if (beaten != null && tracker.isActive())
+		{
+			// The Guardian's husk or Xarth's corpse arriving is surer than any death animation.
+			tracker.fell(beaten, tick, false);
 			dirty = true;
 		}
 	}
@@ -349,7 +360,8 @@ public class CodexArchivePlugin extends Plugin
 			// A hit landing on a body is not a fight going on.
 			return;
 		}
-		if (!tracker.isActive() && Encounter.byName(npc.getName()) == Encounter.GUARDIAN)
+		Encounter encounter = Encounter.of(npc.getId(), npc.getName());
+		if (!tracker.isActive() && encounter == Encounter.GUARDIAN)
 		{
 			// The lobby was missed, but the Guardian is unmistakable: the run began on entering.
 			beginRun(presence.likelyStart(tick));
@@ -359,7 +371,6 @@ public class CodexArchivePlugin extends Plugin
 			return;
 		}
 		String name = npc.getName() == null ? null : Text.removeTags(npc.getName());
-		Encounter encounter = tracker.resolve(npc.getName(), npc.getCombatLevel());
 		if (encounter != null)
 		{
 			tracker.engage(encounter, tick, name, npc.getCombatLevel());
@@ -395,9 +406,10 @@ public class CodexArchivePlugin extends Plugin
 	/** A boss NPC went down; the split closes once nothing else of its encounter stands. */
 	private void bossFell(NPC npc)
 	{
-		Encounter encounter = tracker.resolve(npc.getName(), npc.getCombatLevel());
-		if (encounter == null)
+		Encounter encounter = Encounter.of(npc.getId(), npc.getName());
+		if (encounter == null || !Encounter.isFinalForm(npc.getId()))
 		{
+			// Ocellus's first two phases only give way to the next.
 			return;
 		}
 		boolean anyAlive = false;
@@ -407,7 +419,7 @@ public class CodexArchivePlugin extends Plugin
 			for (NPC other : view.npcs())
 			{
 				if (other != npc && !other.isDead() && other.getHealthRatio() != 0
-					&& tracker.resolve(other.getName(), other.getCombatLevel()) == encounter)
+					&& Encounter.of(other.getId(), other.getName()) == encounter)
 				{
 					anyAlive = true;
 					break;
@@ -548,6 +560,13 @@ public class CodexArchivePlugin extends Plugin
 
 	private static boolean isLobbyNpc(NPC npc)
 	{
+		for (int id : LOBBY_NPC_IDS)
+		{
+			if (npc.getId() == id)
+			{
+				return true;
+			}
+		}
 		String name = npc.getName();
 		if (name == null)
 		{
@@ -664,7 +683,7 @@ public class CodexArchivePlugin extends Plugin
 				{
 					continue;
 				}
-				String unique = Spoils.unique(itemManager.getItemComposition(item.getId()).getName());
+				String unique = Spoils.unique(item.getId(), itemManager.getItemComposition(item.getId()).getName());
 				if (unique != null)
 				{
 					held.merge(unique, item.getQuantity(), Integer::sum);
