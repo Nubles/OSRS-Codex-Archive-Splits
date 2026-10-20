@@ -521,7 +521,8 @@ public class ArchivePanel extends PluginPanel
 		if (run.isCompleted())
 		{
 			boolean pb = previousBest == null || run.getTicks() < previousBest.getTicks();
-			grid.add(new StatTile(Format.ticks(run.getTicks()), "Time", pb ? "new best" : "cleared", pb ? Theme.GOLD_BRIGHT : Theme.TEXT));
+			String sub = pb ? "new best" : run.getGameTicks() > 0 ? "game " + Format.ticks(run.getGameTicks()) : "cleared";
+			grid.add(new StatTile(Format.ticks(run.getTicks()), "Time", sub, pb ? Theme.GOLD_BRIGHT : Theme.TEXT));
 		}
 		else
 		{

@@ -88,6 +88,10 @@ public class CodexArchivePlugin extends Plugin
 	private static final String DAMAGED_KEY = "archiveDamaged";
 	/** How long after a clear uniques landing in the pack are still its loot, five minutes, or until the bank opens. */
 	private static final int LOOT_TICKS = 500;
+	/** The archive's reward chest (gameval InventoryID.TFA_CHESTS), by number until every client has the name. */
+	private static final int REWARD_CHEST = 1029;
+	/** How long after a clear the game's own time for it is still taken as that clear's. */
+	private static final int GAME_TIME_TICKS = 10;
 	/** How long the plaque keeps showing a clear while the player is still inside, half a minute. */
 	private static final int CLEARED_TICKS = 50;
 	private static final int SAVE_TICKS = 50;
@@ -149,6 +153,8 @@ public class CodexArchivePlugin extends Plugin
 	/** The run just recorded when it was a clear, for the plaque while the player is still inside. */
 	private Run lastClear;
 	private boolean wipeAnnounced;
+	/** The game's own time for the clear when it came before the run ended, in ticks, or -1. */
+	private int gameTime = -1;
 	/** The furthest row whose split has gone to the chat box this run. */
 	private int announcedRow;
 
@@ -456,6 +462,22 @@ public class CodexArchivePlugin extends Plugin
 			}
 			dirty = true;
 		}
+		int game = Messages.gameTime(text);
+		if (game > 0)
+		{
+			if (tracker.isActive())
+			{
+				gameTime = game;
+			}
+			else if (lastClear != null && lastClear.getGameTicks() < 0 && tick - runEnded <= GAME_TIME_TICKS)
+			{
+				// The game's time came just after the count that ended the run.
+				lastClear.setGameTicks(game);
+				unsaved = true;
+				changed = true;
+				dirty = true;
+			}
+		}
 		if (tracker.isActive() && Messages.isWipe(text))
 		{
 			wipeAnnounced = true;
@@ -470,7 +492,7 @@ public class CodexArchivePlugin extends Plugin
 		{
 			readPack();
 		}
-		if (id == InventoryID.INV || id == InventoryID.WORN)
+		if (id == InventoryID.INV || id == InventoryID.WORN || id == REWARD_CHEST)
 		{
 			watchLoot();
 		}
@@ -594,6 +616,7 @@ public class CodexArchivePlugin extends Plugin
 		loot.open(heldUniques());
 		announcedRow = 0;
 		wipeAnnounced = false;
+		gameTime = -1;
 		lastClear = null;
 		dirty = true;
 	}
@@ -608,6 +631,11 @@ public class CodexArchivePlugin extends Plugin
 		{
 			return;
 		}
+		if (gameTime > 0 && run.isCompleted())
+		{
+			run.setGameTicks(gameTime);
+		}
+		gameTime = -1;
 		if (run.isCompleted())
 		{
 			loot.closeAt(tick + LOOT_TICKS);
@@ -666,31 +694,41 @@ public class CodexArchivePlugin extends Plugin
 		dirty = true;
 	}
 
-	/** The uniques held now, in the pack and worn, by the panel's name for them. */
+	/**
+	 * The uniques held now, by the panel's name for them: the pack and worn together, or what the
+	 * reward chest holds when that is more. A purple banked straight from the chest still counts,
+	 * and one taken from the chest into the pack is not counted twice.
+	 */
 	private Map<String, Integer> heldUniques()
 	{
 		Map<String, Integer> held = new HashMap<>();
-		for (int id : new int[]{InventoryID.INV, InventoryID.WORN})
+		uniquesIn(InventoryID.INV, held);
+		uniquesIn(InventoryID.WORN, held);
+		Map<String, Integer> chest = new HashMap<>();
+		uniquesIn(REWARD_CHEST, chest);
+		chest.forEach((unique, n) -> held.merge(unique, n, Math::max));
+		return held;
+	}
+
+	private void uniquesIn(int containerId, Map<String, Integer> held)
+	{
+		ItemContainer container = client.getItemContainer(containerId);
+		if (container == null)
 		{
-			ItemContainer container = client.getItemContainer(id);
-			if (container == null)
+			return;
+		}
+		for (Item item : container.getItems())
+		{
+			if (item.getId() < 0 || item.getQuantity() <= 0)
 			{
 				continue;
 			}
-			for (Item item : container.getItems())
+			String unique = Spoils.unique(item.getId(), itemManager.getItemComposition(item.getId()).getName());
+			if (unique != null)
 			{
-				if (item.getId() < 0 || item.getQuantity() <= 0)
-				{
-					continue;
-				}
-				String unique = Spoils.unique(item.getId(), itemManager.getItemComposition(item.getId()).getName());
-				if (unique != null)
-				{
-					held.merge(unique, item.getQuantity(), Integer::sum);
-				}
+				held.merge(unique, item.getQuantity(), Integer::sum);
 			}
 		}
-		return held;
 	}
 
 	/** A unique arriving during a run, or just after a clear, is a purple. */

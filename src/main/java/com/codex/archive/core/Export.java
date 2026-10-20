@@ -29,7 +29,7 @@ public final class Export
 			sb.append(',').append(r).append("_boss,").append(r).append("_room_s,").append(r).append("_fight_s,")
 				.append(r).append("_down_at_s");
 		}
-		sb.append(",purple,role,crew,note\n");
+		sb.append(",purple,role,crew,note,game_time_s\n");
 		for (Run run : runs)
 		{
 			sb.append(WHEN.format(Instant.ofEpochMilli(run.getStartedAt()).atZone(zone))).append(',')
@@ -56,6 +56,7 @@ public final class Export
 				.append(',').append(cell(run.getRole()))
 				.append(',').append(cell(String.join("; ", run.getCrew())))
 				.append(',').append(cell(run.getNote()))
+				.append(',').append(run.getGameTicks() > 0 ? seconds(run.getGameTicks()) : "")
 				.append('\n');
 		}
 		return sb.toString();
