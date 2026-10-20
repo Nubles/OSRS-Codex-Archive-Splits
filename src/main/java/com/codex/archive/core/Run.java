@@ -25,6 +25,8 @@ public class Run
 	/** The completion count the game announced, or 0 when it said none. */
 	private int kc;
 	private int deaths;
+	/** The game's own completion time for the run, in ticks, or 0 when it gave none. */
+	private int gameTicks;
 	/** Supply units used, by kind: pieces of food, potion doses. */
 	private Map<String, Integer> used = new LinkedHashMap<>();
 	/** The unique the run gave, or null. */
@@ -181,6 +183,17 @@ public class Run
 	void setRole(String role)
 	{
 		this.role = role == null || role.trim().isEmpty() ? null : role.trim();
+	}
+
+	/** @return the game's completion time in ticks, or -1 when it gave none */
+	public int getGameTicks()
+	{
+		return gameTicks > 0 ? gameTicks : -1;
+	}
+
+	public void setGameTicks(int ticks)
+	{
+		this.gameTicks = Math.max(0, ticks);
 	}
 
 	void setNote(String note)

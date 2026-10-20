@@ -42,6 +42,10 @@ public final class Share
 		if (run.getOutcome() == Outcome.COMPLETED)
 		{
 			sb.append("Cleared in ").append(Format.ticks(run.getTicks()));
+			if (run.getGameTicks() > 0)
+			{
+				sb.append(" (game timer ").append(Format.ticks(run.getGameTicks())).append(')');
+			}
 			int best = pb == null ? -1 : pb.total();
 			if (best > 0)
 			{

@@ -212,7 +212,9 @@ public class InsightsTest
 		assertEquals(2, lines.length);
 		assertTrue(lines[0].startsWith("started,party,outcome,time_s,kc,deaths,route,row1_boss,row1_room_s"));
 		assertTrue(lines[1].startsWith("1970-01-01 00:00:00,Trio,completed,300.0,,0,\"Bork, Dreadnoth, Xarth\",Archive Guardian,60.0,57.0,60.0,"));
-		assertTrue(lines[1].endsWith(",\"'=cmd, \"\"quoted\"\"\""));
+		assertTrue(lines[1].endsWith(",\"'=cmd, \"\"quoted\"\"\","));
+		r.setGameTicks(495);
+		assertTrue(Export.csv(a.getRuns(), ZoneOffset.UTC).endsWith("\"\"quoted\"\"\",297.0\n"));
 		assertEquals("36.0", Export.seconds(60));
 	}
 

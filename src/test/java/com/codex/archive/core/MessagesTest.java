@@ -25,4 +25,17 @@ public class MessagesTest
 		assertTrue(Messages.isWipe("Your party has fallen."));
 		assertFalse(Messages.isWipe("You have fallen."));
 	}
+
+	@Test
+	public void theGamesOwnTime()
+	{
+		// The wording RuneLite's own chat commands read for the archive's personal best.
+		assertEquals(2376, Messages.gameTime("The Fractured Archive: Total completion time: <col=ef1020>23:45.60</col>. Personal best: 21:02.40"));
+		assertEquals(2376, Messages.gameTime("The Fractured Archive: Total completion time: <col=ef1020>23:45.60</col> (new personal best)"));
+		assertEquals(6100, Messages.gameTime("The Fractured Archive: Total completion time: 1:01:00.00."));
+		assertEquals(100, Messages.gameTime("The Fractured Archive: Total completion time: 1:00."));
+		assertEquals(-1, Messages.gameTime("Theatre of Blood total completion time: 23:45.60."));
+		assertEquals(-1, Messages.gameTime("The Fractured Archive: Total completion time: 99999999999:00."));
+		assertEquals(-1, Messages.gameTime(null));
+	}
 }
