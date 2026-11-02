@@ -1,5 +1,6 @@
 package com.codex.archive;
 
+import com.codex.archive.notes.FieldNotes;
 import com.codex.archive.core.Archive;
 import com.codex.archive.core.Comparison;
 import com.codex.archive.core.Export;
@@ -128,6 +129,9 @@ public class CodexArchivePlugin extends Plugin
 	@Inject
 	private CodexArchiveConfig config;
 
+	/** The optional local record of what the plugin read and decided. */
+	private FieldNotes notes;
+
 	@Inject
 	private ScheduledExecutorService executor;
 
@@ -167,6 +171,11 @@ public class CodexArchivePlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		notes = new FieldNotes(this::getPluginDirectory, gson);
+		if (config.fieldNotes())
+		{
+			notes.open();
+		}
 		panel = new ArchivePanel();
 		navButton = NavigationButton.builder()
 			.tooltip("Codex Archive Splits")
@@ -208,6 +217,11 @@ public class CodexArchivePlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		if (notes != null)
+		{
+			notes.shutdown();
+			notes = null;
+		}
 		overlayManager.remove(splitsPlaque);
 		overlayManager.remove(packPlaque);
 		clientToolbar.removeNavigation(navButton);
@@ -274,6 +288,18 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
+		if (CodexArchiveConfig.GROUP.equals(event.getGroup()) && "fieldNotes".equals(event.getKey()) && notes != null)
+		{
+			if (config.fieldNotes())
+			{
+				notes.open();
+			}
+			else
+			{
+				notes.close();
+			}
+			return;
+		}
 		if (CodexArchiveConfig.GROUP.equals(event.getGroup()))
 		{
 			applyConfig();
@@ -439,6 +465,19 @@ public class CodexArchivePlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
+		if (notes != null && notes.isOpen())
+		{
+			net.runelite.api.ChatMessageType chatType = event.getType();
+			// Only the game's own lines: other players' chat is never written down.
+			if (chatType == net.runelite.api.ChatMessageType.GAMEMESSAGE || chatType == net.runelite.api.ChatMessageType.SPAM
+				|| chatType == net.runelite.api.ChatMessageType.MESBOX)
+			{
+				com.google.gson.JsonObject chatNote = new com.google.gson.JsonObject();
+				chatNote.addProperty("type", chatType.name());
+				chatNote.addProperty("text", event.getMessage());
+				notes.note("chat", chatNote);
+			}
+		}
 		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
 		{
 			return;
@@ -1007,6 +1046,17 @@ public class CodexArchivePlugin extends Plugin
 		boolean inLobby = loggedIn && presence.isInLobby() && !tracker.isActive();
 		View view = new View(loggedIn && player != null ? player.getName() : null, loggedIn, copy, live, inLobby,
 			pack, targets(), System.currentTimeMillis(), live == null ? lastClear : null, config.compareTo());
+		if (notes.isOpen())
+		{
+			// Run state changes and each finished run as read, so a wrong split can be traced.
+			com.google.gson.JsonObject n = new com.google.gson.JsonObject();
+			n.addProperty("loggedIn", loggedIn);
+			n.addProperty("inLobby", inLobby);
+			n.addProperty("live", live != null);
+			n.add("lastClear", notes.safe(lastClear));
+			n.add("pack", notes.safe(pack));
+			notes.noteChanged("run", n);
+		}
 		splitsPlaque.show(view);
 		packPlaque.show(view);
 		ArchivePanel target = panel;
