@@ -71,6 +71,10 @@ Bosses, the lobby, the uniques and the reward chest are matched by the ids the g
 
 Codex Archive Splits only times what has already happened and counts what's in your inventory. It gives no help with boss mechanics: no attack cues, no tile or prayer prompts, nothing that reacts to what a boss is about to do. It doesn't click, change menus or send anything over the network.
 
+## Field notes
+
+An optional setting, **Keep field notes** (under Field notes, off by default), writes a plain record of what Archive Splits reads and decides to its own folder in `.runelite/plugin-data` on your computer, one line at a time. It is for checking the plugin's guesses against real play: when something looks wrong, the notes show what it saw and why it chose what it did. Other players' chat is never written down, it stays on your computer, and nothing is sent anywhere.
+
 ## Development
 
 ```bash
