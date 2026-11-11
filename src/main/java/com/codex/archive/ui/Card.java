@@ -101,10 +101,12 @@ public class Card extends JPanel
 
 		if (accent != null)
 		{
-			g.setClip(shape);
-			g.setPaint(new GradientPaint(0, 0, accent, 0, h, Theme.alpha(accent, 90)));
-			g.fillRect(0, 0, 3, h);
-			g.setClip(null);
+			// The stripe follows the card's rounded edge, drawn on a copy so the clip is never changed.
+			Graphics2D stripe = (Graphics2D) g.create();
+			stripe.clip(shape);
+			stripe.setPaint(new GradientPaint(0, 0, accent, 0, h, Theme.alpha(accent, 90)));
+			stripe.fillRect(0, 0, 3, h);
+			stripe.dispose();
 		}
 
 		Color rim = highlighted ? Theme.alpha(Theme.GOLD, 150) : hover ? Theme.alpha(Theme.GOLD, 90) : Theme.STROKE_SOFT;

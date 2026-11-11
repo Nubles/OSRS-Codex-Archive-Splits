@@ -372,20 +372,22 @@ public final class RunCard
 		RoundRectangle2D page = new RoundRectangle2D.Float(0, 0, w, h, 18, 18);
 		g.setPaint(new GradientPaint(0, 0, Theme.mix(Theme.INK, Theme.CARD_TOP, 0.5), 0, h, Theme.INK_DEEP));
 		g.fill(page);
-		g.setClip(page);
-		g.setPaint(new RadialGradientPaint(w / 2f, 64, w * 0.75f, new float[]{0f, 1f},
+		// The glow, grain and mark stay inside the page, drawn on a copy so the clip is never changed.
+		Graphics2D inside = (Graphics2D) g.create();
+		inside.clip(page);
+		inside.setPaint(new RadialGradientPaint(w / 2f, 64, w * 0.75f, new float[]{0f, 1f},
 			new Color[]{Theme.alpha(best ? Theme.GOLD_BRIGHT : Theme.GOLD, best ? 74 : 50), Theme.alpha(Theme.GOLD, 0)}));
-		g.fillRect(0, 0, w, h);
+		inside.fillRect(0, 0, w, h);
 		// A faint grain, the same every time, so the page reads as vellum rather than a flat fill.
 		Random grain = new Random(17);
 		for (int i = 0; i < w * h / 26; i++)
 		{
-			g.setColor(Theme.alpha(grain.nextBoolean() ? Theme.GOLD_BRIGHT : Color.BLACK, 6 + grain.nextInt(8)));
-			g.fillRect(grain.nextInt(w), grain.nextInt(h), 1, 1);
+			inside.setColor(Theme.alpha(grain.nextBoolean() ? Theme.GOLD_BRIGHT : Color.BLACK, 6 + grain.nextInt(8)));
+			inside.fillRect(grain.nextInt(w), grain.nextInt(h), 1, 1);
 		}
 		// The mark engraved faintly in the corner: lines only, so it never muddies what sits over it.
-		Sigil.engrave(g, w - 196, h - 206, 180, Theme.alpha(Theme.GOLD, 16));
-		g.setClip(null);
+		Sigil.engrave(inside, w - 196, h - 206, 180, Theme.alpha(Theme.GOLD, 16));
+		inside.dispose();
 		g.setStroke(new BasicStroke(1f));
 		g.setColor(Theme.alpha(Theme.GOLD, 190));
 		g.draw(new RoundRectangle2D.Float(4.5f, 4.5f, w - 9, h - 9, 14, 14));
