@@ -8,6 +8,7 @@ import com.codex.archive.core.Encounter;
 import com.codex.archive.core.Goal;
 import com.codex.archive.core.Insights;
 import com.codex.archive.core.Outcome;
+import com.codex.archive.core.PackAdvice;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
 import com.codex.archive.core.Sessions;
@@ -69,6 +70,7 @@ public class ArchivePanel extends PluginPanel
 	private final SplitTable table = new SplitTable();
 	private final PackCard packCard = new PackCard("Pack check");
 	private final PackCard usedCard = new PackCard("Used this run");
+	private final AdviceCard adviceCard = new AdviceCard();
 
 	private View view = View.loggedOut();
 	private boolean partyChosen;
@@ -77,6 +79,7 @@ public class ArchivePanel extends PluginPanel
 	private BiConsumer<Long, String> onRole = (t, r) -> { };
 	private BiConsumer<Long, String> onNote = (t, n) -> { };
 	private Runnable onExport = () -> { };
+	private Runnable onAdoptPack = () -> { };
 	private BiConsumer<BufferedImage, String> onSaveCard = (card, name) -> { };
 	/** A line under the run card's buttons, such as where it was saved; cleared when the run page moves on. */
 	private String cardNote;
@@ -162,6 +165,12 @@ public class ArchivePanel extends PluginPanel
 	public void onExport(Runnable export)
 	{
 		onExport = export;
+	}
+
+	/** What the panel asks of the plugin to make learned amounts the pack check's targets. */
+	public void onAdoptPack(Runnable adopt)
+	{
+		onAdoptPack = adopt;
 	}
 
 	/** What the panel asks of the plugin to save a run card: the picture and the file name to offer. */
@@ -375,15 +384,9 @@ public class ArchivePanel extends PluginPanel
 			setPage(runPage, stack);
 			return;
 		}
-		if (view.inLobby && view.checksPack())
+		if (view.inLobby)
 		{
-			stack.add(new SectionHeader("Before you enter", "no bank inside"));
-			packCard.update(view.pack, view.targets);
-			stack.add(packCard);
-		}
-		else if (view.inLobby)
-		{
-			stack.add(note("In the lobby", "Set how much food and how many doses you want to carry in, under Pack check in the plugin's settings, and this page checks your pack before the doors close."));
+			lobby(stack);
 		}
 		Run run = view.live != null ? view.live : view.archive.last();
 		if (run == null)
@@ -446,6 +449,80 @@ public class ArchivePanel extends PluginPanel
 			session(stack, session);
 		}
 		setPage(runPage, stack);
+	}
+
+	/**
+	 * In the lobby: the pack against what the player set out to bring, the amounts learned from
+	 * their latest clears with one press to adopt them, and what their latest wipes ran out of.
+	 */
+	private void lobby(StackPanel stack)
+	{
+		int bucket = PackAdvice.lobbyBucket(runs());
+		PackAdvice.Suggestion advice = PackAdvice.suggest(runs(), bucket);
+		PackAdvice.Wipes wipes = PackAdvice.wipes(runs(), bucket);
+		if (view.checksPack())
+		{
+			stack.add(new SectionHeader("Before you enter", "no bank inside"));
+			packCard.update(view.pack, view.targets);
+			stack.add(packCard);
+		}
+		else if (advice == null)
+		{
+			stack.add(note("In the lobby", "Set how much food and how many doses you want to carry in, under Pack check in the plugin's settings, and this page checks your pack before the doors close."));
+		}
+		else
+		{
+			stack.add(note("In the lobby", "Your pack is not being checked. Use the amounts learned from your clears below, or set your own under Pack check in the plugin's settings."));
+		}
+		if (advice != null)
+		{
+			stack.add(new SectionHeader("Learned pack", scope(advice.bucket, advice.clears, "clear", "clears")));
+			adviceCard.update(advice, view.targets);
+			stack.add(adviceCard);
+			if (!advice.matches(view.targets))
+			{
+				JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
+				buttons.setOpaque(false);
+				buttons.add(new CodexButton("Use these amounts", true, onAdoptPack));
+				stack.add(buttons);
+			}
+		}
+		if (wipes != null)
+		{
+			stack.add(wipeNotes(wipes));
+		}
+	}
+
+	/** "10 trio clears", "3 wipes, any size". */
+	private static String scope(int bucket, int n, String one, String many)
+	{
+		return n + " " + (bucket >= 0 ? Format.party(Records.BUCKETS[bucket]) + " " : "") + (n == 1 ? one : many) + (bucket < 0 ? ", any size" : "");
+	}
+
+	/** What the latest wipes had run out of: the supply that failed them, or that none did. */
+	private static JComponent wipeNotes(PackAdvice.Wipes wipes)
+	{
+		List<Supply> shortOf = wipes.shortOf();
+		Card card = new Card(new BorderLayout(0, 4));
+		card.accent(shortOf.isEmpty() ? Theme.GREEN : Theme.EMBER);
+		String which = wipes.wipes == 1 ? "your last wipe" : "your last " + scope(wipes.bucket, wipes.wipes, "wipe", "wipes");
+		card.add(Ui.label("In " + which, Theme.small(), Theme.GOLD_DIM), BorderLayout.NORTH);
+		StackPanel lines = new StackPanel(3, 0);
+		if (shortOf.isEmpty())
+		{
+			lines.add(Ui.wrapped(wipes.wipes == 1 ? "Nothing had run out when you went down." : "None had run out of anything when you went down.",
+				Theme.small(), Theme.GREEN, WIDTH - 30));
+		}
+		for (Supply s : shortOf)
+		{
+			int n = wipes.ranOut(s);
+			String what = s == Supply.FOOD ? "food" : s.getTitle().toLowerCase(java.util.Locale.ENGLISH);
+			String text = wipes.wipes == 1 ? "You had no " + what + " left." : n + " of " + wipes.wipes + " had no " + what + " left";
+			lines.add(Ui.label(text, Theme.body(), n * 2 >= wipes.wipes ? Theme.EMBER : Theme.TEXT));
+		}
+		card.add(lines, BorderLayout.CENTER);
+		card.setToolTipText("What your pack held when you went down, in wipes since the plugin began keeping it.");
+		return card;
 	}
 
 	/** Everything that decides the run page's shape, so it is only rebuilt when that changes. */

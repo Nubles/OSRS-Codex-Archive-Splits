@@ -1,0 +1,51 @@
+# The archive's lobby before a run: the pack checked against the amounts set, then the amounts
+# learned from the account's own clears adopted, as the panel's "Use these amounts" does. The
+# saved history holds three trio clears and the trio wipe before them. The scene is schematic,
+# not the real map.
+#
+# Facts: RuneLite's gameval NpcID TFA_RECORD_KEEPER = 16692, one of the lobby's own NPCs.
+# ItemID: SHARK "Shark", _4DOSEPOTIONOFSARADOMIN "Saradomin brew(4)", _4DOSE2RESTORE
+# "Super restore(4)".
+
+scene 3200 3200
+item SHARK "Shark" price 800
+item _4DOSEPOTIONOFSARADOMIN "Saradomin brew(4)" price 5000
+item _4DOSE2RESTORE "Super restore(4)" price 9000
+saved archive {"runs":[{"startedAt":1767100000000,"teamSize":3,"outcome":"WIPED","ticks":1500,"used":{"FOOD":14,"BREWS":16},"left":{"FOOD":6,"BREWS":0}},{"startedAt":1767110000000,"teamSize":3,"outcome":"COMPLETED","ticks":2000,"used":{"FOOD":9,"BREWS":13,"RESTORES":8}},{"startedAt":1767120000000,"teamSize":3,"outcome":"COMPLETED","ticks":1900,"used":{"FOOD":7,"BREWS":11,"RESTORES":9}},{"startedAt":1767130000000,"teamSize":3,"outcome":"COMPLETED","ticks":1850,"used":{"FOOD":8,"BREWS":12,"RESTORES":6}}]}
+config food 10
+config brews 12
+config restores 12
+config boosts 0
+items INV SHARK 6
+items INV _4DOSEPOTIONOFSARADOMIN 3
+items INV _4DOSE2RESTORE 3
+at 3210 3210
+login
+tick 3
+
+watch lobby packPlaque.view.inLobby
+watch short packPlaque.view.shortfall
+tick 1
+expect lobby = false
+
+# The Record Keeper in view: this is the lobby, and four sharks are missing.
+npc 16692 "Record Keeper" 3212 3212 1 as keeper
+tick 2
+expect lobby = true
+expect short ~ FOOD=4
+expect short !~ BREWS
+
+# A brew drunk in the lobby shows at once.
+items INV clear
+items INV SHARK 6
+items INV _4DOSEPOTIONOFSARADOMIN 2
+items INV _4DOSE2RESTORE 3
+tick 1
+expect short ~ BREWS=4
+
+call adoptLearnedPack
+tick 2
+
+remove keeper
+tick 3
+expect lobby = false

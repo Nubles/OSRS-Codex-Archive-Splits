@@ -49,6 +49,12 @@ public class RunTracker
 	private final List<String> purples = new ArrayList<>();
 	private final Map<Supply, Integer> last = new EnumMap<>(Supply.class);
 	private final Map<Supply, Integer> used = new EnumMap<>(Supply.class);
+	/**
+	 * What the pack held, and what had been used, when the player last went down; null before any
+	 * fall. A party that wipes loses its items to gravestones outside, so a wipe's pack is read here.
+	 */
+	private Map<Supply, Integer> lastAtFall;
+	private Map<Supply, Integer> usedAtFall;
 	/** Hits on big NPCs that matched no boss, by "Name (level)", in the order first hit. */
 	private final Map<String, Integer> foes = new LinkedHashMap<>();
 	/** Most different unrecognised NPCs counted in one run, so a room full of adds cannot grow it without end. */
@@ -73,6 +79,8 @@ public class RunTracker
 		purples.clear();
 		last.clear();
 		used.clear();
+		lastAtFall = null;
+		usedAtFall = null;
 		foes.clear();
 		if (pack != null)
 		{
@@ -373,6 +381,10 @@ public class RunTracker
 		if (run != null)
 		{
 			deaths++;
+			lastAtFall = new EnumMap<>(Supply.class);
+			lastAtFall.putAll(last);
+			usedAtFall = new EnumMap<>(Supply.class);
+			usedAtFall.putAll(used);
 		}
 	}
 
@@ -441,7 +453,13 @@ public class RunTracker
 		Outcome outcome = finalTick >= 0 ? Outcome.COMPLETED : wiped || deaths > 0 ? Outcome.WIPED : Outcome.LEFT;
 		int ticks = finalTick >= 0 ? finalTick : Math.max(0, tick - base);
 		run.splitsMutable().removeIf(s -> !s.isDone() && outcome == Outcome.COMPLETED);
-		run.finish(outcome, ticks, deaths, usedByTitle());
+		// A wipe's items leave the pack for the gravestones, which is no one eating them: what the
+		// pack held and had used is taken from the player's last fall. A wipe with no fall seen
+		// keeps what was counted, and leaves what was left unknown.
+		boolean wipe = outcome == Outcome.WIPED;
+		Map<Supply, Integer> usedNow = wipe && usedAtFall != null ? usedAtFall : used;
+		Map<Supply, Integer> leftNow = wipe ? lastAtFall : last;
+		run.finish(outcome, ticks, deaths, byTitle(usedNow), leftNow == null ? null : leftByTitle(leftNow, usedNow));
 		List<Map.Entry<String, Integer>> seen = new ArrayList<>(foes.entrySet());
 		// The most hit first; the sort keeps first-hit order on a tie.
 		seen.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
@@ -493,11 +511,31 @@ public class RunTracker
 
 	private Map<String, Integer> usedByTitle()
 	{
+		return byTitle(used);
+	}
+
+	private static Map<String, Integer> byTitle(Map<Supply, Integer> units)
+	{
 		Map<String, Integer> out = new LinkedHashMap<>();
 		for (Supply s : Supply.values())
 		{
-			int n = used.getOrDefault(s, 0);
+			int n = units.getOrDefault(s, 0);
 			if (n > 0)
+			{
+				out.put(s.name(), n);
+			}
+		}
+		return out;
+	}
+
+	/** What is left of each supply the run carried, nothing left included; a supply never carried is left out. */
+	private static Map<String, Integer> leftByTitle(Map<Supply, Integer> pack, Map<Supply, Integer> usedSoFar)
+	{
+		Map<String, Integer> out = new LinkedHashMap<>();
+		for (Supply s : Supply.values())
+		{
+			int n = Math.max(0, pack.getOrDefault(s, 0));
+			if (n > 0 || usedSoFar.getOrDefault(s, 0) > 0)
 			{
 				out.put(s.name(), n);
 			}
