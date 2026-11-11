@@ -11,6 +11,11 @@ import net.runelite.client.config.Range;
 public interface CodexArchiveConfig extends Config
 {
 	String GROUP = "codexarchive";
+	/** The pack check's amounts, kept by these keys; the panel writes them when learned amounts are adopted. */
+	String FOOD = "food";
+	String BREWS = "brews";
+	String RESTORES = "restores";
+	String BOOSTS = "boosts";
 
 	@ConfigSection(
 		name = "Pack check",
@@ -77,7 +82,7 @@ public interface CodexArchiveConfig extends Config
 
 	@Range(max = 28)
 	@ConfigItem(
-		keyName = "food",
+		keyName = FOOD,
 		name = "Food",
 		description = "Pieces of food to bring; 0 leaves food out of the check",
 		position = 12,
@@ -90,7 +95,7 @@ public interface CodexArchiveConfig extends Config
 
 	@Range(max = 112)
 	@ConfigItem(
-		keyName = "brews",
+		keyName = BREWS,
 		name = "Brew doses",
 		description = "Doses of Saradomin brew to bring; 0 leaves brews out of the check",
 		position = 13,
@@ -103,7 +108,7 @@ public interface CodexArchiveConfig extends Config
 
 	@Range(max = 112)
 	@ConfigItem(
-		keyName = "restores",
+		keyName = RESTORES,
 		name = "Restore doses",
 		description = "Doses of super restore, prayer potion or sanfew serum to bring; 0 leaves them out of the check",
 		position = 14,
@@ -116,7 +121,7 @@ public interface CodexArchiveConfig extends Config
 
 	@Range(max = 112)
 	@ConfigItem(
-		keyName = "boosts",
+		keyName = BOOSTS,
 		name = "Boost doses",
 		description = "Doses of combat, ranging or magic potions to bring; 0 leaves them out of the check",
 		position = 15,

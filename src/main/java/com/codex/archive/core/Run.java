@@ -29,6 +29,12 @@ public class Run
 	private int gameTicks;
 	/** Supply units used, by kind: pieces of food, potion doses. */
 	private Map<String, Integer> used = new LinkedHashMap<>();
+	/**
+	 * What the pack still held of each supply it carried in, by kind: when the run ended, or when
+	 * the player went down in a run that wiped, since a wiped party's items go to its gravestones.
+	 * Null for runs from before it was kept, and for a wipe whose fall the client never saw.
+	 */
+	private Map<String, Integer> left;
 	/** The unique the run gave, or null. */
 	private String purple;
 	/** The other raiders seen at the start, by name. */
@@ -93,6 +99,18 @@ public class Run
 	public Map<String, Integer> getUsed()
 	{
 		return Collections.unmodifiableMap(used);
+	}
+
+	/** What the pack still held of each supply carried in, by kind; empty when not known. */
+	public Map<String, Integer> getLeft()
+	{
+		return left == null ? Collections.emptyMap() : Collections.unmodifiableMap(left);
+	}
+
+	/** Whether the run kept what the pack still held at its end. */
+	public boolean knowsLeft()
+	{
+		return left != null;
 	}
 
 	public String getPurple()
@@ -284,6 +302,13 @@ public class Run
 		this.used = new LinkedHashMap<>(used);
 	}
 
+	/** @param left what the pack still held of each supply carried in, or null when not known */
+	void finish(Outcome outcome, int ticks, int deaths, Map<String, Integer> used, Map<String, Integer> left)
+	{
+		finish(outcome, ticks, deaths, used);
+		this.left = left == null ? null : new LinkedHashMap<>(left);
+	}
+
 	List<Split> splitsMutable()
 	{
 		return splits;
@@ -302,6 +327,10 @@ public class Run
 			used = new LinkedHashMap<>();
 		}
 		used.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null || e.getValue() < 0);
+		if (left != null)
+		{
+			left.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null || e.getValue() < 0);
+		}
 		ticks = Math.max(0, ticks);
 		kc = Math.max(0, kc);
 		deaths = Math.max(0, deaths);
@@ -341,6 +370,7 @@ public class Run
 		r.kc = kc;
 		r.deaths = deaths;
 		r.used = new LinkedHashMap<>(used);
+		r.left = left == null ? null : new LinkedHashMap<>(left);
 		r.purple = purple;
 		r.crew = new ArrayList<>(getCrew());
 		r.role = role;

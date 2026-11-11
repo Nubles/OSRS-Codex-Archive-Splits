@@ -7,6 +7,7 @@ import com.codex.archive.core.Encounter;
 import com.codex.archive.core.Goal;
 import com.codex.archive.core.LootWatch;
 import com.codex.archive.core.Messages;
+import com.codex.archive.core.PackAdvice;
 import com.codex.archive.core.Presence;
 import com.codex.archive.core.Records;
 import com.codex.archive.core.Run;
@@ -181,6 +182,7 @@ public class CodexArchivePlugin extends Plugin
 		panel.onDelete(this::deleteRun, this::deleteDrop);
 		panel.onNotes((at, role) -> annotate(a -> a.setRole(at, role)), (at, note) -> annotate(a -> a.setNote(at, note)));
 		panel.onExport(this::export);
+		panel.onAdoptPack(this::adoptLearnedPack);
 		panel.onSaveCard(this::saveCard);
 		panel.onGoal((bucket, ticks) -> annotate(a ->
 		{
@@ -780,6 +782,32 @@ public class CodexArchivePlugin extends Plugin
 				save();
 				publish();
 			}
+		});
+	}
+
+	/**
+	 * Makes the amounts learned from the player's clears the pack check's targets, as the player
+	 * asked on the panel: the same amounts the lobby shows, from the same runs. The settings change
+	 * like any other, and the check follows at once.
+	 */
+	void adoptLearnedPack()
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (archive == null)
+			{
+				return;
+			}
+			List<Run> runs = archive.getRuns();
+			PackAdvice.Suggestion advice = PackAdvice.suggest(runs, PackAdvice.lobbyBucket(runs));
+			if (advice == null)
+			{
+				return;
+			}
+			configManager.setConfiguration(CodexArchiveConfig.GROUP, CodexArchiveConfig.FOOD, advice.amount(Supply.FOOD));
+			configManager.setConfiguration(CodexArchiveConfig.GROUP, CodexArchiveConfig.BREWS, advice.amount(Supply.BREWS));
+			configManager.setConfiguration(CodexArchiveConfig.GROUP, CodexArchiveConfig.RESTORES, advice.amount(Supply.RESTORES));
+			configManager.setConfiguration(CodexArchiveConfig.GROUP, CodexArchiveConfig.BOOSTS, advice.amount(Supply.BOOSTS));
 		});
 	}
 
